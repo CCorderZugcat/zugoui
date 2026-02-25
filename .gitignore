@@ -1,0 +1,8 @@
+go.work
+go.work.sum
+dist/
+node_modules/
+.vscode/
+*.wasm
+bin/
+
