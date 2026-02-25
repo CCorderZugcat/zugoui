@@ -9,12 +9,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/CCorderZugcat/zugoui/jsglue/input"
-	"github.com/CCorderZugcat/zugoui/jsglue/jsgluetest"
+	"github.com/CCorderZugcat/zugoui/formtest"
+	"github.com/CCorderZugcat/zugoui/input"
 )
 
 func TestInput(t *testing.T) {
-	jsgluetest.SetBody(t, fsys, "value.html")
+	formtest.SetBody(t, fsys, "value.html")
 
 	field1, err := input.Element("field1")
 	require.NoError(t, err)

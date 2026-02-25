@@ -14,9 +14,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/CCorderZugcat/zugoui/formtest"
+	"github.com/CCorderZugcat/zugoui/input"
 	"github.com/CCorderZugcat/zugoui/jsglue"
-	"github.com/CCorderZugcat/zugoui/jsglue/input"
-	"github.com/CCorderZugcat/zugoui/jsglue/jsgluetest"
 	"github.com/CCorderZugcat/zugoui/observable/observabletest"
 	"github.com/CCorderZugcat/zugoui/wsrpc"
 )
@@ -73,7 +73,7 @@ type Model struct {
 
 func TestObjectBinding(t *testing.T) {
 	gob.Register(&Model{})
-	jsgluetest.SetBody(t, fsys, "form.html")
+	formtest.SetBody(t, fsys, "form.html")
 
 	s := wsrpc.New()
 	_, bclient, _, stop := endpoints(t, s)
@@ -117,7 +117,7 @@ func TestObjectBinding(t *testing.T) {
 }
 
 func TestValueBinding(t *testing.T) {
-	jsgluetest.SetBody(t, fsys, "form.html")
+	formtest.SetBody(t, fsys, "form.html")
 	elem, err := input.Element("product")
 	require.NoError(t, err)
 
@@ -153,7 +153,7 @@ func TestValueBinding(t *testing.T) {
 }
 
 func TestActionBinding(t *testing.T) {
-	jsgluetest.SetBody(t, fsys, "form.html")
+	formtest.SetBody(t, fsys, "form.html")
 	elem, err := input.Element("productAction")
 	require.NoError(t, err)
 

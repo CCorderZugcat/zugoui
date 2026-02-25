@@ -11,8 +11,8 @@ import (
 	"sync/atomic"
 	"syscall/js"
 
+	"github.com/CCorderZugcat/zugoui/input"
 	"github.com/CCorderZugcat/zugoui/jsglue"
-	"github.com/CCorderZugcat/zugoui/jsglue/input"
 	"github.com/CCorderZugcat/zugoui/observable"
 	"github.com/CCorderZugcat/zugoui/wsrpc"
 	"github.com/CCorderZugcat/zugoui/wsrpc/rpctypes"
