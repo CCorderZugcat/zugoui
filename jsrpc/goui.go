@@ -124,10 +124,32 @@ func newForm(source observable.Source) *form {
 	return f
 }
 
+// unsubscriber returns an unsubscribe function to the js caller
+func unsubscriber(cleanup func()) js.Func {
+	var unsubscribe js.Func
+	unsubscribe = js.FuncOf(func(js.Value, []js.Value) any {
+		cleanup()
+		unsubscribe.Release()
+		return nil
+	})
+	return unsubscribe
+}
+
 func (f *form) JsObject() map[string]any {
 	return map[string]any{
 		"errors": f.funcs.FuncOf(func(js.Value, []js.Value) any {
 			return f.errors()
+		}),
+
+		"subscribeErrors": f.funcs.FuncOf(func(_ js.Value, args []js.Value) any {
+			if err := jsglue.AssertArgs(args, js.TypeFunction); err != nil {
+				return jsglue.Error(err)
+			}
+
+			observer := f.newErrorSubscription(args[0])
+			return unsubscriber(func() {
+				f.source.RemoveObserver("", observer)
+			})
 		}),
 
 		"getValue": f.funcs.FuncOf(func(_ js.Value, args []js.Value) any {
@@ -146,16 +168,11 @@ func (f *form) JsObject() map[string]any {
 				return jsglue.Error(err)
 			}
 
-			observer := newSubscription(f, "", args[1])
-			f.source.AddObserver("", observer)
-
-			var unsubscribe js.Func
-			unsubscribe = js.FuncOf(func(js.Value, []js.Value) any {
+			observer := f.newSubscription("", args[0])
+			return unsubscriber(func() {
 				f.source.RemoveObserver("", observer)
-				unsubscribe.Release()
-				return nil
 			})
-			return unsubscribe
+
 		}),
 
 		"getSnapshot": f.funcs.FuncOf(func(js.Value, []js.Value) any {
@@ -181,16 +198,10 @@ func (f *form) JsObject() map[string]any {
 				return jsglue.Error(fmt.Errorf("key %s not found", id))
 			}
 
-			observer := newSubscription(f, id, args[1])
-			f.source.AddObserver(key, observer)
-
-			var unsubscribe js.Func
-			unsubscribe = js.FuncOf(func(js.Value, []js.Value) any {
+			observer := f.newSubscription(id, args[1])
+			return unsubscriber(func() {
 				f.source.RemoveObserver(key, observer)
-				unsubscribe.Release()
-				return nil
 			})
-			return unsubscribe
 		}),
 
 		"release": f.funcs.FuncOf(func(js.Value, []js.Value) any {
@@ -224,14 +235,25 @@ func (f *form) errors() any {
 	return result
 }
 
+// newSubscription returns a subscription to the whole form or a field in it
+func (f *form) newSubscription(id string, callback js.Value) *subscription {
+	s := &subscription{form: f, callback: callback, id: id}
+	f.source.AddObserver("", s)
+	return s
+}
+
+// newErrorSubscription returns a subscription to form errors
+func (f *form) newErrorSubscription(callback js.Value) *errorSubscription {
+	e := &errorSubscription{form: f, callback: callback}
+	f.source.AddObserver("", e)
+	return e
+}
+
 type subscription struct {
+	observable.NullObserver
 	form     *form
 	id       string
 	callback js.Value
-}
-
-func newSubscription(form *form, id string, callback js.Value) *subscription {
-	return &subscription{form: form, callback: callback, id: id}
 }
 
 func (s *subscription) SetValue(key string, value any) {
@@ -244,11 +266,16 @@ func (s *subscription) SetValue(key string, value any) {
 	}
 }
 
-func (s *subscription) SetValueFor(key string, value any) {
-	s.SetValue(key, value)
+type errorSubscription struct {
+	observable.NullObserver
+	form     *form
+	callback js.Value
 }
 
-func (s *subscription) SetValueAt(int, any)    {}
-func (s *subscription) InsertValueAt(int, any) {}
-func (s *subscription) RemoveValueAt(int)      {}
-func (s *subscription) RemoveValueFor(string)  {}
+func (e *errorSubscription) SetValue(key string, value any) {
+	if errors := e.form.errors(); errors != nil {
+		e.callback.Invoke(errors)
+	} else {
+		e.callback.Invoke(map[string]any{})
+	}
+}
