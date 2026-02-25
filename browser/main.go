@@ -16,7 +16,7 @@ import (
 	"github.com/coder/websocket"
 
 	"github.com/CCorderZugcat/zugoui/jsglue"
-	"github.com/CCorderZugcat/zugoui/jsglue/jsrpc"
+	"github.com/CCorderZugcat/zugoui/jsrpc"
 	"github.com/CCorderZugcat/zugoui/wsconn"
 )
 

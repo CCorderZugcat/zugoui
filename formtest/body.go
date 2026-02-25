@@ -1,6 +1,6 @@
 //go:build js
 
-package jsgluetest
+package formtest
 
 import (
 	"io"
@@ -34,10 +34,4 @@ func SetBody(t testing.TB, fsys fs.FS, filename string) {
 
 	body := js.Global().Get("document").Get("body")
 	body.Set("innerHTML", string(pageData))
-
-	// unit test framework needs this button
-	body.Call(
-		"insertAdjacentHTML",
-		"beforeend", `<button id="doneButton" style="display: none;" disabled>Done</button>`,
-	)
 }

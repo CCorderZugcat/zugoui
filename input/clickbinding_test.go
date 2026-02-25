@@ -9,15 +9,15 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/CCorderZugcat/zugoui/jsglue/input"
-	"github.com/CCorderZugcat/zugoui/jsglue/jsgluetest"
+	"github.com/CCorderZugcat/zugoui/formtest"
+	"github.com/CCorderZugcat/zugoui/input"
 )
 
 //go:embed testdata/*
 var fsys embed.FS
 
 func TestClickBinding(t *testing.T) {
-	jsgluetest.SetBody(t, fsys, "click.html")
+	formtest.SetBody(t, fsys, "click.html")
 
 	elem, err := input.Element("button1")
 	require.NoError(t, err)

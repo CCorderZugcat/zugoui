@@ -9,15 +9,15 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/CCorderZugcat/zugoui/formtest"
+	"github.com/CCorderZugcat/zugoui/input"
 	"github.com/CCorderZugcat/zugoui/jsglue"
-	"github.com/CCorderZugcat/zugoui/jsglue/input"
-	"github.com/CCorderZugcat/zugoui/jsglue/jsgluetest"
 	"github.com/CCorderZugcat/zugoui/observable"
 	"github.com/CCorderZugcat/zugoui/observable/observabletest"
 )
 
 func TestSimpleValueBinding(t *testing.T) {
-	jsgluetest.SetBody(t, fsys, "value.html")
+	formtest.SetBody(t, fsys, "value.html")
 
 	field1, err := input.Element("field1")
 	require.NoError(t, err)
@@ -64,7 +64,7 @@ func TestSimpleValueBinding(t *testing.T) {
 }
 
 func TestRadio(t *testing.T) {
-	jsgluetest.SetBody(t, fsys, "value.html")
+	formtest.SetBody(t, fsys, "value.html")
 
 	field3, err := input.Element("field3")
 	require.NoError(t, err)

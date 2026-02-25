@@ -7,7 +7,7 @@ import (
 	"flag"
 	"os"
 
-	"github.com/CCorderZugcat/zugoui/jsglue/browser"
+	"github.com/CCorderZugcat/zugoui/browser"
 	_ "github.com/CCorderZugcat/zugoui/samples/contact-us/model"
 )
 
