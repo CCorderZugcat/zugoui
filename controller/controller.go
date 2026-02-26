@@ -35,24 +35,6 @@ type binding struct {
 	observing observable.Observable
 }
 
-// actionObserver is a function adapter to an [observable.Observer].
-// actions only ever set the key "action" with the action name as the value.
-type actionObserver func(action string)
-
-var _ observable.Observer = actionObserver(nil)
-
-func (a actionObserver) SetValue(key string, value any) {
-	if key == "action" {
-		a(value.(string))
-	}
-}
-
-func (a actionObserver) InsertValueAt(int, any)  {}
-func (a actionObserver) RemoveValueAt(int)       {}
-func (a actionObserver) SetValueAt(int, any)     {}
-func (a actionObserver) SetValueFor(string, any) {}
-func (a actionObserver) RemoveValueFor(string)   {}
-
 // New creates a new Controller instance given the web server's RPC service and a connection to the browser.
 // namespace specifies the browser's binding namespace to use with this Controller's instance.
 func New(server *wsrpc.Server, browser wsrpc.Browser, namespace string) *Controller {
@@ -92,7 +74,8 @@ func (c *Controller) Release() {
 
 // HandleActions sets the callback for actions
 func (c *Controller) HandleActions(handler func(action string)) {
-	c.server.AddActionObserver(actionObserver(func(fullName string) {
+	c.server.AddActionObserver(observable.ActionObserver(func(_ string, value any) {
+		fullName, _ := value.(string)
 		if strings.HasPrefix(fullName, c.prefix) {
 			handler(strings.Trim(fullName, c.prefix))
 		} else if strings.HasPrefix(fullName, "global.") {

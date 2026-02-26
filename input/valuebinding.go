@@ -95,5 +95,6 @@ func (b *ValueBinding) SetValue(key string, value any) {
 		// we already established this before creating the ValueBinding
 		panic(fmt.Sprintf("SetValue of un js'able value type %T", value))
 	}
+
 	Set(b.elem, b.property, js.ValueOf(jsModel))
 }
