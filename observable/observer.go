@@ -147,3 +147,15 @@ func (n NullObserver) SetValueFor(string, any) {}
 func (n NullObserver) RemoveValueFor(string)   {}
 
 var _ Observer = NullObserver{}
+
+// ActionObserver allows a simple callback on setValue
+type ActionObserver func(key string, value any)
+
+func (a ActionObserver) SetValue(key string, value any) { a(key, value) }
+func (a ActionObserver) InsertValueAt(int, any)         {}
+func (a ActionObserver) RemoveValueAt(int)              {}
+func (a ActionObserver) SetValueAt(int, any)            {}
+func (a ActionObserver) SetValueFor(string, any)        {}
+func (a ActionObserver) RemoveValueFor(string)          {}
+
+var _ Observer = ActionObserver(nil)

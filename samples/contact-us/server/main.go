@@ -101,7 +101,7 @@ func handleRPC(w http.ResponseWriter, r *http.Request) {
 	o := observable.NewModel(&m)
 
 	// another random observable value we will bind to a property
-	submitDisabled := false
+	submitDisabled := true
 	sdo := observable.NewModel(&submitDisabled)
 
 	// we're going to fail our action once every 3rd time
@@ -131,7 +131,7 @@ func handleRPC(w http.ResponseWriter, r *http.Request) {
 				if err := observable.ValidateSource(o); err != nil {
 					fmt.Printf("client sent invalid data: %v\n", err)
 					detail["ok"] = false
-					detail["message"] = ""
+					detail["message"] = "Form has validation errors."
 				}
 			}
 
@@ -157,9 +157,6 @@ func handleRPC(w http.ResponseWriter, r *http.Request) {
 
 			// clear the other fields
 			o.SetValue("EmailStatus", "")
-
-			// re-enable the submit button
-			sdo.SetValue("value", false)
 		}
 	})
 
@@ -188,6 +185,11 @@ func handleRPC(w http.ResponseWriter, r *http.Request) {
 	if err := c.BindValue("submitDisabled", []string{"submit"}, "disabled", sdo); err != nil {
 		fmt.Fprintf(os.Stderr, "unable to bind submit button: %v\n", err)
 	}
+
+	// and let's observe the model so we can update the button based on validation
+	o.AddObserver("", observable.ActionObserver(func(string, any) {
+		sdo.SetValue("value", observable.ValidateSource(o) != nil)
+	}))
 
 	<-done
 	fmt.Fprintf(os.Stderr, "handleRPC exiting\n")

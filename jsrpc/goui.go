@@ -135,10 +135,15 @@ func unsubscriber(cleanup func()) js.Func {
 	return unsubscribe
 }
 
+var noErrors = js.ValueOf(map[string]any{}) // same instance to return for no errors
+
 func (f *form) JsObject() map[string]any {
 	return map[string]any{
 		"errors": f.funcs.FuncOf(func(js.Value, []js.Value) any {
-			return f.errors()
+			if errors := f.errors(); errors != nil {
+				return errors
+			}
+			return noErrors
 		}),
 
 		"subscribeErrors": f.funcs.FuncOf(func(_ js.Value, args []js.Value) any {
@@ -146,7 +151,10 @@ func (f *form) JsObject() map[string]any {
 				return jsglue.Error(err)
 			}
 
-			observer := f.newErrorSubscription(args[0])
+			cb := args[0]
+			cb.Invoke(f.errors())
+
+			observer := f.newErrorSubscription(cb)
 			return unsubscriber(func() {
 				f.source.RemoveObserver("", observer)
 			})
@@ -168,7 +176,7 @@ func (f *form) JsObject() map[string]any {
 				return jsglue.Error(err)
 			}
 
-			observer := f.newSubscription("", args[0])
+			observer := f.newSubscription("", "", args[0])
 			return unsubscriber(func() {
 				f.source.RemoveObserver("", observer)
 			})
@@ -198,7 +206,7 @@ func (f *form) JsObject() map[string]any {
 				return jsglue.Error(fmt.Errorf("key %s not found", id))
 			}
 
-			observer := f.newSubscription(id, args[1])
+			observer := f.newSubscription(id, key, args[1])
 			return unsubscriber(func() {
 				f.source.RemoveObserver(key, observer)
 			})
@@ -224,7 +232,10 @@ func (f *form) errors() any {
 
 	for key, err := range errors {
 		for _, id := range f.fields[key] {
-			result[id] = err.Error()
+			result[id] = map[string]any{
+				"message": err.Error(),
+				"type":    "server",
+			}
 		}
 	}
 
@@ -236,9 +247,9 @@ func (f *form) errors() any {
 }
 
 // newSubscription returns a subscription to the whole form or a field in it
-func (f *form) newSubscription(id string, callback js.Value) *subscription {
+func (f *form) newSubscription(id, key string, callback js.Value) *subscription {
 	s := &subscription{form: f, callback: callback, id: id}
-	f.source.AddObserver("", s)
+	f.source.AddObserver(key, s)
 	return s
 }
 
@@ -259,8 +270,7 @@ type subscription struct {
 func (s *subscription) SetValue(key string, value any) {
 	for _, id := range s.form.fields[key] {
 		if id == "" || id == s.id {
-			value, _ := jstypes.ValueOf(value)
-			s.callback.Invoke(value)
+			s.callback.Invoke()
 			return
 		}
 	}
@@ -276,6 +286,6 @@ func (e *errorSubscription) SetValue(key string, value any) {
 	if errors := e.form.errors(); errors != nil {
 		e.callback.Invoke(errors)
 	} else {
-		e.callback.Invoke(map[string]any{})
+		e.callback.Invoke(noErrors)
 	}
 }
