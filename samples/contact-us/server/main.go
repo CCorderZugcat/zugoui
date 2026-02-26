@@ -143,7 +143,7 @@ func handleRPC(w http.ResponseWriter, r *http.Request) {
 			}
 
 			// this form's logic wants an event upon completion
-			if err := c.Browswer.DispatchEvent("submitted", detail); err != nil {
+			if err := c.Browswer.DispatchEvent("contact-submitted", detail); err != nil {
 				fmt.Fprintf(os.Stderr, "failed to dispatch submit event: %v\n", err)
 			}
 

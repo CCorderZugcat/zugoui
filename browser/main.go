@@ -12,6 +12,7 @@ import (
 	"path"
 	"sync"
 	"syscall/js"
+	"time"
 
 	"github.com/coder/websocket"
 
@@ -72,6 +73,17 @@ func Main(ctx context.Context, endpoint string) (err error) {
 	}
 
 	fmt.Println("websocket connected")
+
+	ticker := time.NewTicker(15 * time.Second)
+	defer ticker.Stop()
+	go func() {
+		for range ticker.C {
+			if err := ws.Ping(ctx); err != nil {
+				fmt.Fprintf(os.Stderr, "ping: %v\n", err)
+				break
+			}
+		}
+	}()
 
 	// create a Demux for the two endpoints
 	dmx := wsconn.NewDemux(ctx, wsconn.NewMessage(ctx, ws))
