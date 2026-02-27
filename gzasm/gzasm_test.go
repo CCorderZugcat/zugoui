@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/CCorderZugcat/zugoui/gzasm"
+	"github.com/andybalholm/brotli"
 )
 
 func TestGZasm(t *testing.T) {
@@ -33,8 +34,19 @@ func TestGZasm(t *testing.T) {
 	gzw.Write(data)
 	gzw.Close()
 
+	brdata := &bytes.Buffer{}
+	brw := brotli.NewWriter(brdata)
+	brw.Write(data)
+	brw.Close()
+
 	fsys["test.wasm.gz"] = &fstest.MapFile{
 		Data:    gzdata.Bytes(),
+		Mode:    0555,
+		ModTime: time.Now(),
+	}
+
+	fsys["test.wasm.br"] = &fstest.MapFile{
+		Data:    brdata.Bytes(),
 		Mode:    0555,
 		ModTime: time.Now(),
 	}
@@ -42,35 +54,38 @@ func TestGZasm(t *testing.T) {
 	s := httptest.NewServer(gzasm.New(http.FileServerFS(fsys), fsys))
 	defer s.Close()
 
-	r, err := http.NewRequest(http.MethodGet, s.URL+"/test.wasm", nil)
-	require.NoError(t, err)
+	roundTrip := func(encoding string, expect []byte) {
+		r, err := http.NewRequest(http.MethodGet, s.URL+"/test.wasm", nil)
+		require.NoError(t, err)
 
-	r.Header.Add("Accept-Encoding", "gzip")
+		if encoding != "" {
+			r.Header.Add("Accept-Encoding", "gzip, br")
+		}
 
-	res, err := http.DefaultClient.Do(r)
-	require.NoError(t, err)
-	require.Equal(t, http.StatusOK, res.StatusCode)
+		res, err := http.DefaultClient.Do(r)
+		require.NoError(t, err)
+		defer res.Body.Close()
 
-	assert.Equal(t, "application/wasm", res.Header.Get("Content-Type"))
-	assert.Equal(t, "gzip", res.Header.Get("Content-Encoding"))
+		assert.Equal(t, http.StatusOK, res.StatusCode)
+		if encoding != "" {
+			assert.Equal(t, encoding, res.Header.Get("Content-Encoding"))
+		}
 
-	buf := &bytes.Buffer{}
-	io.Copy(buf, res.Body)
-	res.Body.Close()
+		body := &bytes.Buffer{}
+		io.Copy(body, res.Body)
+		assert.Truef(t, bytes.Equal(expect, body.Bytes()), "contents did not match")
+	}
 
-	assert.Equal(t, gzdata.Bytes(), buf.Bytes())
+	t.Run("default", func(t *testing.T) {
+		roundTrip("", data)
+	})
 
-	r, err = http.NewRequest(http.MethodGet, s.URL+"/test.wasm", nil)
-	require.NoError(t, err)
+	t.Run("br", func(t *testing.T) {
+		roundTrip("br", brdata.Bytes())
+	})
 
-	res, err = http.DefaultClient.Do(r)
-	require.NoError(t, err)
-
-	assert.Equal(t, "application/wasm", res.Header.Get("Content-Type"))
-
-	buf.Reset()
-	io.Copy(buf, res.Body)
-	res.Body.Close()
-
-	assert.Equal(t, data, buf.Bytes())
+	t.Run("gz", func(t *testing.T) {
+		delete(fsys, "test.wasm.br")
+		roundTrip("gzip", gzdata.Bytes())
+	})
 }
