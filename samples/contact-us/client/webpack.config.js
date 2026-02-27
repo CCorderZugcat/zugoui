@@ -1,6 +1,7 @@
 const path = require('path');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
 const MiniCssExtractPlugin = require('mini-css-extract-plugin');
+const CompressionPlugin = require('compression-webpack-plugin');
 
 module.exports = {
     mode:  'production',
@@ -41,6 +42,16 @@ module.exports = {
             template: 'index.html',
             inject: 'head',
             scriptLoading: 'blocking',
+        }),
+        new CompressionPlugin({
+            filename: '[path][base].gz',
+            algorithm: 'gzip',
+            test: /\.wasm$/,
+        }),
+        new CompressionPlugin({
+            filename: '[path][base].br',
+            algorithm: 'brotliCompress',
+            test: /\.wasm$/,
         }),
     ],
 };

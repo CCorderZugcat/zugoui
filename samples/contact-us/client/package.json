@@ -4,6 +4,7 @@
     "**/wasm_exec.js"
   ],
   "dependencies": {
+    "compression-webpack-plugin": "^11.1.0",
     "css-loader": "^7.1.4",
     "html-webpack-plugin": "^5.6.6",
     "mini-css-extract-plugin": "^2.10.0",
@@ -16,7 +17,6 @@
   "scripts": {
     "build-go": "./build.sh",
     "webpack": "webpack",
-    "compress": "gzip -9 -k -f dist/*.wasm",
-    "build": "npm run build-go && npm run webpack && npm run compress"
+    "build": "npm run build-go && npm run webpack"
   }
 }
