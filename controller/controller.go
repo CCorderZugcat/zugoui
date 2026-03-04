@@ -74,7 +74,7 @@ func (c *Controller) Release() {
 
 // HandleActions sets the callback for actions
 func (c *Controller) HandleActions(handler func(action string)) {
-	c.server.AddActionObserver(observable.ActionObserver(func(_ string, value any) {
+	c.server.AddActionObserver(observable.NewActionObserver(func(_ string, value any) {
 		fullName, _ := value.(string)
 		if strings.HasPrefix(fullName, c.prefix) {
 			handler(strings.Trim(fullName, c.prefix))

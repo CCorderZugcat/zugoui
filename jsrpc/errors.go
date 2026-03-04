@@ -34,6 +34,7 @@ func newErrorSource(b *Browser, formID string) *errorSource {
 		if err != nil {
 			return
 		}
+
 		e.form = newForm(vb.source)
 		e.state.Store(js.ValueOf(e.form.errors()))
 	}()
@@ -93,7 +94,7 @@ func (e *errorSource) subscribe(cb js.Value) func() {
 
 		cb.Invoke() // initial state
 
-		o := observable.ActionObserver(func(string, any) {
+		o := observable.NewActionObserver(func(string, any) {
 			e.state.Store(js.ValueOf(f.errors()))
 			cb.Invoke()
 		})

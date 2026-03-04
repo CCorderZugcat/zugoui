@@ -45,6 +45,7 @@ func (v *valueBindings) Destroy() {
 			b.Destroy()
 		}
 	}
+
 	v.source.RemoveAllObservers()
 	v.up.RemoveAllObservers()
 }

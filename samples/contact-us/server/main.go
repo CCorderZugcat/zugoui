@@ -31,9 +31,11 @@ func main() {
 
 	fsys := os.DirFS(flag.Arg(0))
 
+	const ep = "/anon/contact/rpc"
+
 	mux := http.NewServeMux()
 	mux.Handle("/", gzasm.New(http.FileServerFS(fsys), fsys))
-	mux.HandleFunc("/contact/rpc", handleRPC)
+	mux.HandleFunc(ep, handleRPC)
 
 	l, err := net.Listen("tcp", "[::1]:")
 	if err != nil {
@@ -41,6 +43,7 @@ func main() {
 		os.Exit(1)
 	}
 	fmt.Printf("listening on http://%v\n", l.Addr())
+	fmt.Printf("websocket endpoint is %s\n", ep)
 
 	s := &http.Server{Handler: mux}
 
@@ -187,7 +190,7 @@ func handleRPC(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// and let's observe the model so we can update the button based on validation
-	o.AddObserver("", observable.ActionObserver(func(string, any) {
+	o.AddObserver("", observable.NewActionObserver(func(string, any) {
 		sdo.SetValue("value", observable.ValidateSource(o) != nil)
 	}))
 

@@ -148,14 +148,20 @@ func (n NullObserver) RemoveValueFor(string)   {}
 
 var _ Observer = NullObserver{}
 
-// ActionObserver allows a simple callback on setValue
-type ActionObserver func(key string, value any)
+type actionObserver struct {
+	f func(key string, value any)
+}
 
-func (a ActionObserver) SetValue(key string, value any) { a(key, value) }
-func (a ActionObserver) InsertValueAt(int, any)         {}
-func (a ActionObserver) RemoveValueAt(int)              {}
-func (a ActionObserver) SetValueAt(int, any)            {}
-func (a ActionObserver) SetValueFor(string, any)        {}
-func (a ActionObserver) RemoveValueFor(string)          {}
+// NewActionObserver allows a simple callback on SetValue.
+// Hidden behind a struct pointer rather than being a function type
+// to allow comparable
+func NewActionObserver(f func(key string, value any)) Observer {
+	return &actionObserver{f: f}
+}
 
-var _ Observer = ActionObserver(nil)
+func (a actionObserver) SetValue(key string, value any) { a.f(key, value) }
+func (a actionObserver) InsertValueAt(int, any)         {}
+func (a actionObserver) RemoveValueAt(int)              {}
+func (a actionObserver) SetValueAt(int, any)            {}
+func (a actionObserver) SetValueFor(string, any)        {}
+func (a actionObserver) RemoveValueFor(string)          {}
