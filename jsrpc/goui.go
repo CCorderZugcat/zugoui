@@ -19,6 +19,16 @@ var noErrors = js.ValueOf(map[string]any{}) // same instance to return for no er
 // JsObject returns the "zugoui" object which usually appears in the window object
 func (b *Browser) JsObject() map[string]any {
 	return map[string]any{
+		// rebind(void): void
+		"rebind": b.funcs.FuncOf(func(js.Value, []js.Value) any {
+			b.formIDs.Clear() // do this synchronously before returning promise
+
+			return jsglue.Promise(func() ([]any, error) {
+				b.Rebind()
+				return nil, nil
+			})
+		}),
+
 		// addEventListener(type: string, listener: (ev)=>void): void
 		"addEventListener": b.funcs.FuncOf(func(_ js.Value, args []js.Value) any {
 			if err := jsglue.AssertArgs(args, js.TypeString, js.TypeFunction); err != nil {

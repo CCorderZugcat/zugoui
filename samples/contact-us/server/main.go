@@ -5,10 +5,14 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
+	"io/fs"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"path"
+	"strconv"
 
 	"github.com/coder/websocket"
 
@@ -22,6 +26,9 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 
+	distOpt := ""
+	flag.StringVar(&distOpt, "dist", distOpt, "serve anything outside this prefix form /index.html")
+
 	flag.Parse()
 
 	if len(flag.Args()) < 1 {
@@ -34,7 +41,41 @@ func main() {
 	const ep = "/anon/contact/rpc"
 
 	mux := http.NewServeMux()
-	mux.Handle("/", gzasm.New(http.FileServerFS(fsys), fsys))
+	fshandler := gzasm.New(http.FileServerFS(fsys), fsys)
+
+	if distOpt != "" {
+		// quick and hacky way to make client side routing methods happy
+
+		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			if _, err := fs.Stat(fsys, path.Join(".", r.URL.Path)); err == nil {
+				fshandler.ServeHTTP(w, r)
+				return
+			}
+
+			fd, err := fsys.Open("index.html")
+			if err != nil {
+				w.WriteHeader(http.StatusNotFound)
+				fmt.Fprintf(w, "%v\r\n", err)
+				return
+			}
+			defer fd.Close()
+
+			st, err := fd.Stat()
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				fmt.Fprintf(w, "%v\r\n", err)
+				return
+			}
+
+			w.Header().Set("Content-Type", "text/html")
+			w.Header().Set("Content-Length", strconv.Itoa(int(st.Size())))
+			io.Copy(w, fd)
+		})
+		mux.Handle(distOpt, fshandler)
+	} else {
+		mux.Handle("/", fshandler)
+	}
+
 	mux.HandleFunc(ep, handleRPC)
 
 	l, err := net.Listen("tcp", "[::1]:")

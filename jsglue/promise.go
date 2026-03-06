@@ -54,7 +54,7 @@ func complete(resolve, reject js.Value, err error, results []any) {
 		reject.Invoke(Error(err))
 	} else {
 		if len(results) == 0 {
-			resolve.Invoke(nil)
+			resolve.Invoke()
 		} else {
 			resolve.Invoke(results...)
 		}

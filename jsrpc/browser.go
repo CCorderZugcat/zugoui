@@ -3,7 +3,6 @@
 package jsrpc
 
 import (
-	"fmt"
 	"reflect"
 	"slices"
 	"strings"
@@ -35,25 +34,80 @@ type bindingSet map[string][]*input.ValueBinding
 
 type valueBindings struct {
 	source, up observable.MutableSource
+	elementIDs []string
+	property   string
 	formID     string
 	bindings   bindingSet
 }
 
-func (v *valueBindings) Destroy() {
-	for _, v := range v.bindings {
+func (vb *valueBindings) Destroy() {
+	for _, v := range vb.bindings {
 		for _, b := range v {
 			b.Destroy()
 		}
 	}
 
-	v.source.RemoveAllObservers()
-	v.up.RemoveAllObservers()
+	vb.source.RemoveAllObservers()
+	vb.up.RemoveAllObservers()
+}
+
+func (vb *valueBindings) rebind() *valueBindings {
+	vcopy := *vb
+
+	for _, v := range vcopy.bindings {
+		for _, b := range v {
+			b.Destroy()
+		}
+	}
+
+	bindings := make(bindingSet)
+
+	if len(vcopy.elementIDs) > 0 {
+		for _, id := range vcopy.elementIDs {
+			// bind single element to single value (no form logic)
+			elem, err := input.Element(id)
+			if err != nil {
+				// dynamic pages can race, which is why we provide a rebind for these cases
+				continue
+			}
+			binding, err := input.NewValueBinding(elem, vcopy.property, vcopy.source, "value")
+			bindings["value"] = append(bindings["value"], binding)
+		}
+	} else {
+		// bind structure with tagged fields
+		for _, key := range vcopy.source.Keys() {
+			elems := vcopy.source.Tag(key, "bind")
+			for _, tag := range elems {
+				id, property := idAndProperty(tag)
+
+				elem, err := input.Element(id)
+				if err != nil {
+					continue
+				}
+
+				if vcopy.formID == "" {
+					// opportunistically try to get the enclosing form
+					form := elem.Call("closest", "form")
+					if form.Type() == js.TypeObject {
+						if id := form.Get("id"); id.Type() == js.TypeString {
+							vcopy.formID = id.String()
+						}
+					}
+				}
+
+				binding, err := input.NewValueBinding(elem, property, vcopy.source, key)
+				bindings[key] = append(bindings[key], binding)
+			}
+		}
+	}
+
+	return &vcopy
 }
 
 // perform the same action on each binding
-func (v *valueBindings) eachBindingFor(key string, fn func(observable.Observer)) {
-	fn(v.up)
-	for it := range slices.Values(v.bindings[key]) {
+func (vb *valueBindings) eachBindingFor(key string, fn func(observable.Observer)) {
+	fn(vb.up)
+	for it := range slices.Values(vb.bindings[key]) {
 		fn(it)
 	}
 }
@@ -118,7 +172,6 @@ func (b *Browser) NewValueBinding(req *rpctypes.NewValueBindingReq, res *rpctype
 	model := reflect.New(reflect.ValueOf(req.Model).Type()).Elem()
 
 	handle := nextID.Add(1)
-	bindings := make(bindingSet) // key:[]binding (each ui element of same key)
 
 	// create client side data source
 	model.Set(reflect.ValueOf(req.Model))
@@ -129,68 +182,48 @@ func (b *Browser) NewValueBinding(req *rpctypes.NewValueBindingReq, res *rpctype
 	observer := Observer{b.server, req.Action}
 	up.AddObserver("", observer)
 
-	var formID string
-
-	if len(req.ElementIDs) > 0 {
-		for _, id := range req.ElementIDs {
-			// bind single element to single value (no form logic)
-			elem, err := input.Element(id)
-			if err != nil {
-				fmt.Printf("warning: could not find element %s\n", id)
-				continue
-			}
-			binding, err := input.NewValueBinding(elem, req.Property, source, "value")
-			bindings["value"] = append(bindings["value"], binding)
-		}
-	} else {
-		// bind structure with tagged fields
-		for _, key := range source.Keys() {
-			elems := source.Tag(key, "bind")
-			for _, tag := range elems {
-				id, property := idAndProperty(tag)
-
-				elem, err := input.Element(id)
-				if err != nil {
-					fmt.Printf("warning: could not find element %s\n", id)
-					continue
-				}
-
-				if formID == "" {
-					// opportunistically try to get the enclosing form
-					form := elem.Call("closest", "form")
-					if form.Type() == js.TypeObject {
-						if id := form.Get("id"); id.Type() == js.TypeString {
-							formID = id.String()
-						}
-					}
-				}
-
-				binding, err := input.NewValueBinding(elem, property, source, key)
-				bindings[key] = append(bindings[key], binding)
-			}
-		}
+	property := req.Property
+	if property == "" {
+		property = "value"
 	}
 
-	res.Handle = handle
+	vb := (&valueBindings{
+		source:     source,
+		up:         up,
+		elementIDs: slices.Clone(req.ElementIDs),
+		property:   property,
+	}).rebind()
 
-	// this association allows the server to update us, the browser
-	v := &valueBindings{source: source, up: up, formID: formID, bindings: bindings}
-	b.handles.Store(handle, v)
+	res.Handle = handle
+	b.storeBindings(handle, vb)
+
+	return nil
+}
+
+func (b *Browser) storeBindings(handle int64, vb *valueBindings) {
+	formID := vb.formID
+	b.handles.Store(handle, vb)
 
 	if formID != "" {
-		// this presumes a single threaded js engine, otherwise there is a potential
-		// for a race condition between other go routine not seeing the form,
-		// us storing the form, then seeing nobody waiting on the channel, then other
-		// go routine waiting on the channel.
-		b.formIDs.Store(formID, v)
-
+		b.formIDs.Store(formID, vb)
 		select {
 		case b.formAdded <- struct{}{}:
 		default: // do not block
 		}
 	}
+}
 
-	return nil
+// Rebind allows the client to request the server bindings to be rebound.
+// This is needed for dynamic pages after creating or re-creating elements.
+func (b *Browser) Rebind() {
+	b.formIDs.Clear()
+	b.handles.Range(func(key, value any) bool {
+		if vb, ok := value.(*valueBindings); ok {
+			vb := vb.rebind()
+			b.storeBindings(key.(int64), vb)
+		}
+		return true
+	})
 }
 
 // Unbind releases a binding
