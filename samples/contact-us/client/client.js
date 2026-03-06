@@ -2,8 +2,6 @@ import './style.css';
 import './wasm/wasm_exec.js';
 import wasmUrl from './client.wasm';
 
-console.log('client.js');
-
 window.zugoui = new Promise(
     (res) => {
         globalThis.zugouiReady = res;
