@@ -18,7 +18,7 @@ async function run (...args) {
 
 (async () => {
     try {
-        await run('anon/contact/rpc');
+        await run('anon/contact/app/rpc');
     } catch(err) {
         console.error(err);
     }
