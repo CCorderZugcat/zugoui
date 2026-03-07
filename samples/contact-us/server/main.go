@@ -38,7 +38,7 @@ func main() {
 
 	fsys := os.DirFS(flag.Arg(0))
 
-	const ep = "/anon/contact/rpc"
+	const ep = "/anon/contact/app/rpc"
 
 	mux := http.NewServeMux()
 	fshandler := gzasm.New(http.FileServerFS(fsys), fsys)
