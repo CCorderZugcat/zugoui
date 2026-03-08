@@ -15,7 +15,7 @@ type Server struct {
 
 // Observer implements the Observer interface to the server with the Action
 type Observer struct {
-	Server
+	*Server
 	Action string
 }
 

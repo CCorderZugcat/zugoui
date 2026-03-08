@@ -14,11 +14,8 @@ import (
 	"syscall/js"
 	"time"
 
-	"github.com/coder/websocket"
-
 	"github.com/CCorderZugcat/zugoui/jsglue"
 	"github.com/CCorderZugcat/zugoui/jsrpc"
-	"github.com/CCorderZugcat/zugoui/wsconn"
 )
 
 // Main runs the main loop of the browser side of things.
@@ -66,42 +63,13 @@ func Main(ctx context.Context, endpoint string) (err error) {
 		return err
 	}
 
-	ws, _, err := websocket.Dial(ctx, u.String(), nil)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "websocket.Dial(%v) failed\n", u.String())
-		return err
-	}
-
-	fmt.Println("websocket connected")
-
-	ticker := time.NewTicker(15 * time.Second)
-	defer ticker.Stop()
-	go func() {
-		for range ticker.C {
-			if err := ws.Ping(ctx); err != nil {
-				fmt.Fprintf(os.Stderr, "ping: %v\n", err)
-				break
-			}
-		}
-	}()
-
-	// create a Demux for the two endpoints
-	dmx := wsconn.NewDemux(ctx, wsconn.NewMessage(ctx, ws))
-	defer dmx.Close()
-
-	ep0 := dmx.NewEndpoint(0)
-	ep1 := dmx.NewEndpoint(1)
-	defer ep0.Close()
-	defer ep1.Close()
-
 	// create the rpc service
-	browser := jsrpc.New(jsrpc.Server{Client: rpc.NewClient(ep0)})
-	defer browser.Destroy()
+	// "server" refers to the client connection to the web server
+	// "browser" refers to the rpc service running in the browswer
 
-	ready := js.Global().Get("zugouiReady")
-	if ready.Type() == js.TypeFunction {
-		ready.Invoke(browser.JsObject())
-	}
+	server := &jsrpc.Server{}
+	browser := jsrpc.New(server)
+	defer browser.Destroy()
 
 	rpcServer := rpc.NewServer()
 	if err := rpcServer.Register(browser); err != nil {
@@ -109,8 +77,17 @@ func Main(ctx context.Context, endpoint string) (err error) {
 		return err
 	}
 
-	// ..and serve it for the lifetime of this page
-	fmt.Println("listening")
-	rpcServer.ServeConn(ep1)
-	return nil
+	for {
+		if err := connection(ctx, u.String(), server, rpcServer, func() {
+			ready := js.Global().Get("zugouiReady")
+			if ready.Type() == js.TypeFunction {
+				ready.Invoke(browser.JsObject())
+			}
+		}); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+		} else {
+			fmt.Println("connection lost")
+		}
+		time.Sleep(15 * time.Second)
+	}
 }

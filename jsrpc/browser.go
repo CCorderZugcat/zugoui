@@ -21,9 +21,9 @@ import (
 
 // Browser is the browser side rpc service
 type Browser struct {
+	server    *Server // to the web server
 	handles   sync.Map
 	formIDs   sync.Map
-	server    Server // to the web server
 	listeners map[string][]js.Value
 	lck       sync.RWMutex
 	funcs     jsglue.Funcs
@@ -51,7 +51,7 @@ func (vb *valueBindings) Destroy() {
 	vb.up.RemoveAllObservers()
 }
 
-func (vb *valueBindings) rebind() *valueBindings {
+func (vb *valueBindings) Rebind() any {
 	vcopy := *vb
 
 	for _, v := range vcopy.bindings {
@@ -115,7 +115,7 @@ func (vb *valueBindings) eachBindingFor(key string, fn func(observable.Observer)
 var nextID atomic.Int64
 
 // New creates a new browser side rpc service instance
-func New(server Server) *Browser {
+func New(server *Server) *Browser {
 	b := &Browser{
 		server:    server,
 		listeners: make(map[string][]js.Value),
@@ -192,24 +192,29 @@ func (b *Browser) NewValueBinding(req *rpctypes.NewValueBindingReq, res *rpctype
 		up:         up,
 		elementIDs: slices.Clone(req.ElementIDs),
 		property:   property,
-	}).rebind()
+	}).Rebind()
 
 	res.Handle = handle
-	b.storeBindings(handle, vb)
+	b.storeBindings(handle, vb.(*valueBindings))
 
 	return nil
 }
 
-func (b *Browser) storeBindings(handle int64, vb *valueBindings) {
-	formID := vb.formID
-	b.handles.Store(handle, vb)
+func (b *Browser) storeBindings(handle int64, bindings any) {
+	switch bindings := bindings.(type) {
+	case *valueBindings:
+		formID := bindings.formID
+		b.handles.Store(handle, bindings)
 
-	if formID != "" {
-		b.formIDs.Store(formID, vb)
-		select {
-		case b.formAdded <- struct{}{}:
-		default: // do not block
+		if formID != "" {
+			b.formIDs.Store(formID, bindings)
+			select {
+			case b.formAdded <- struct{}{}:
+			default: // do not block
+			}
 		}
+	default:
+		b.handles.Store(handle, bindings)
 	}
 }
 
@@ -218,10 +223,10 @@ func (b *Browser) storeBindings(handle int64, vb *valueBindings) {
 func (b *Browser) Rebind() {
 	b.formIDs.Clear()
 	b.handles.Range(func(key, value any) bool {
-		if vb, ok := value.(*valueBindings); ok {
-			vb := vb.rebind()
-			b.storeBindings(key.(int64), vb)
+		if rb, ok := value.(interface{ Rebind() any }); ok {
+			b.storeBindings(key.(int64), rb.Rebind())
 		}
+
 		return true
 	})
 }
@@ -283,19 +288,14 @@ func (b *Browser) eachBindingFor(handle int64, key string, fn func(observable.Ob
 // This is an rpc version of [input.NewClickBinding].
 // The action is proxied to [server.Action].
 func (b *Browser) NewClickBinding(req *rpctypes.NewClickBindingReq, res *rpctypes.NewClickBindingRes) error {
-	elem, err := input.Element(req.ElementID)
-	if err != nil {
-		return err
-	}
-
 	handle := nextID.Add(1)
 
-	clickBinding := input.NewClickBinding(elem, req.Action, func(action string) {
+	clickBinding := input.NewClickBinding(req.ElementID, req.Action, func(action string) {
 		b.server.Action(action)
 	})
 	res.Handle = handle
 
-	b.handles.Store(handle, clickBinding)
+	b.storeBindings(handle, clickBinding)
 	return nil
 }
 
