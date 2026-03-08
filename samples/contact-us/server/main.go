@@ -27,8 +27,8 @@ func main() {
 	defer stop()
 
 	distOpt := ""
-    listenOpt := "localhost:"
-    
+	listenOpt := "localhost:"
+
 	flag.StringVar(&distOpt, "dist", distOpt, "serve anything outside this prefix form /index.html")
 	flag.StringVar(&listenOpt, "listen", listenOpt, "listen address")
 
