@@ -6,6 +6,7 @@ import "syscall/js"
 
 // ClickBinding is a binding between any clickable element (usually a <button>) and an action.
 type ClickBinding struct {
+	id       string
 	listener js.Func
 	elem     js.Value
 	name     string
@@ -15,16 +16,37 @@ type ClickBinding struct {
 // NewClickBinding creates a new ClickBinding instance.
 // When clicked, action is called with name as the parameter.
 // The action should not block.
-func NewClickBinding(elem js.Value, name string, action func(string)) *ClickBinding {
+func NewClickBinding(id string, name string, action func(string)) *ClickBinding {
 	c := &ClickBinding{
-		elem:   elem,
+		id:     id,
 		name:   name,
 		action: action,
 	}
 	c.listener = js.FuncOf(c.eventListener)
-	elem.Call("addEventListener", "click", c.listener, map[string]any{"passive": true})
+	c.bind() // attempt if the element is there
 
 	return c
+}
+
+func (c *ClickBinding) bind() {
+	elem, err := Element(c.id)
+	if err != nil {
+		return
+	}
+	c.elem = elem
+	elem.Call("addEventListener", "click", c.listener, map[string]any{"passive": true})
+}
+
+// Rebind follows the Rebind interface allowing this binding to
+// hook back up to a dynamically rendered document or reconnection.
+func (c *ClickBinding) Rebind() any {
+	if c.elem.Type() == js.TypeObject {
+		c.elem.Call("removeEventListener", "click", c.listener)
+	}
+
+	cc := *c
+	cc.bind()
+	return &cc
 }
 
 // Destroy releases this binding.

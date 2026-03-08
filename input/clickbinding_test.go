@@ -24,7 +24,7 @@ func TestClickBinding(t *testing.T) {
 
 	action := make(chan string, 1)
 
-	b := input.NewClickBinding(elem, "button1", func(name string) {
+	b := input.NewClickBinding("button1", "button1", func(name string) {
 		action <- name
 	})
 	defer b.Destroy()

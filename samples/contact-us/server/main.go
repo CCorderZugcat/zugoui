@@ -27,7 +27,10 @@ func main() {
 	defer stop()
 
 	distOpt := ""
+    listenOpt := "localhost:"
+    
 	flag.StringVar(&distOpt, "dist", distOpt, "serve anything outside this prefix form /index.html")
+	flag.StringVar(&listenOpt, "listen", listenOpt, "listen address")
 
 	flag.Parse()
 
@@ -78,7 +81,7 @@ func main() {
 
 	mux.HandleFunc(ep, handleRPC)
 
-	l, err := net.Listen("tcp", "[::1]:")
+	l, err := net.Listen("tcp", listenOpt)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

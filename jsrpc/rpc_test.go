@@ -44,7 +44,7 @@ func endpoints(
 	require.NoError(t, err)
 
 	sclient = Server{Client: rpc.NewClient(sp_c)} // server side client calling browser
-	b = New(sclient)                              // browser side rpc server
+	b = New(&sclient)                             // browser side rpc server
 	brpc := rpc.NewServer()
 	err = brpc.Register(b)
 	require.NoError(t, err)
@@ -146,7 +146,7 @@ func TestValueBinding(t *testing.T) {
 	assert.Equal(t, "user-entered", update.Value)
 	assert.Equal(t, "value", update.Key)
 
-	Observer{Server: sclient, Action: "product"}.SetValue("value", "rpc-test")
+	Observer{Server: &sclient, Action: "product"}.SetValue("value", "rpc-test")
 	t.Log("waiting for update event (programatic)")
 	update = <-vc
 	assert.Equal(t, "rpc-test", update.Value)
