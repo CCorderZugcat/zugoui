@@ -49,9 +49,9 @@ func (c *ClickBinding) Rebind() any {
 	return &cc
 }
 
-// Destroy releases this binding.
+// Release releases this binding.
 // The event listener is removed and the js.Function instance released.
-func (c *ClickBinding) Destroy() {
+func (c *ClickBinding) Release() {
 	c.elem.Call("removeEventListener", "click", c.listener)
 	c.listener.Release()
 }

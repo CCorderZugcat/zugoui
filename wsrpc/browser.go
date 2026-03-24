@@ -49,14 +49,14 @@ func (b Browser) DispatchEvent(name string, detail any) error {
 }
 
 // NewValueBinding client stub function for [jsrpc.Browser.NewValueBinding]
-func (b Browser) NewValueBinding(action string, elementIDs []string, property string, model any) (int64, error) {
+func (b Browser) NewValueBinding(action, formID string, elementIDs []string, model any) (int64, error) {
 	resp := &rpctypes.NewValueBindingRes{}
 	if err := b.Call(
 		"Browser.NewValueBinding",
 		&rpctypes.NewValueBindingReq{
 			Action:     action,
+			FormID:     formID,
 			ElementIDs: elementIDs,
-			Property:   property,
 			Model:      model,
 		},
 		resp,

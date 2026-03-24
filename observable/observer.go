@@ -16,17 +16,17 @@ type Observer interface {
 }
 
 type Observable interface {
-	Updating(key string) (done func())            // do not observe changes on this key until done is called.
+	Updating() (done func())                      // do not observe changes on this object until done is called. Can be recursive.
 	AddObserver(key string, observer Observer)    // adds observer for key. If key is empty, observes all keys.
 	RemoveObserver(key string, observer Observer) // removes observer for key. If key is empty, only removes the all keys observer.
-	RemoveAllObservers()                          // removes all observers
+	Release()                                     // removes all observers, do not use again after calling.
 }
 
 // Observe allows management of observer hooks
 type Observe struct {
 	lck       sync.RWMutex
 	observers map[string][]Observer
-	updating  map[string]int
+	updating  int
 }
 
 var _ Observer = (*Observe)(nil)
@@ -35,22 +35,22 @@ var _ Observer = (*Observe)(nil)
 func New() *Observe {
 	o := &Observe{
 		observers: make(map[string][]Observer),
-		updating:  make(map[string]int),
 	}
 	return o
 }
 
 // Updating indicates this key is being updated without notification until done is called.
-func (o *Observe) Updating(key string) (done func()) {
+func (o *Observe) Updating() (done func()) {
 	o.lck.Lock()
 	defer o.lck.Unlock()
 
-	o.updating[key]++
+	o.updating++
 
 	return func() {
 		o.lck.Lock()
 		defer o.lck.Unlock()
-		o.updating[key]--
+
+		o.updating--
 	}
 }
 
@@ -76,7 +76,7 @@ func (o *Observe) RemoveObserver(key string, observer Observer) {
 }
 
 // RemoveAllObservers removes all observers.
-func (o *Observe) RemoveAllObservers() {
+func (o *Observe) Release() {
 	o.lck.Lock()
 	defer o.lck.Unlock()
 
@@ -87,7 +87,7 @@ func (o *Observe) observersFor(key string) []Observer {
 	o.lck.RLock()
 	defer o.lck.RUnlock()
 
-	if o.updating[key] > 0 {
+	if o.updating > 0 {
 		return nil
 	}
 

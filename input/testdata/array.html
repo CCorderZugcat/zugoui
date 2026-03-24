@@ -1,0 +1,45 @@
+<html>
+    <head>
+        <title>Array</title>
+    </head>
+    <body>
+        <form id="pizza">
+            <fieldset name="size">
+                <label for="small">Small</label>
+                <input type="radio" name="size" value="small"/>
+                <label for="medium">Medium</label>
+                <input type="radio" name="size" value="medium"/>
+                <label for="large">Large</label>
+                <input type="radio" name="size" value="large"/>
+            </fieldset>
+            <div name="toppings">
+                <div name="0">
+                    <label for="topping">Topping</label>
+                    <input name="topping" list="toppings"/>
+                    <input type="button" name="remove" value="Remove"/>
+                </div>
+                <div name="1">
+                    <label for="topping">Topping</label>
+                    <input name="topping" list="toppings"/>
+                    <input type="button" name="remove" value="Remove"/>
+                </div>
+                <div name="2">
+                    <label for="topping">Topping</label>
+                    <input name="topping" list="toppings"/>
+                    <input type="button" name="remove" value="Remove"/>
+                </div>
+            </div>
+        </form>
+
+        <datalist id="toppings">
+            <option value="tuna fish"></option>
+            <option value="peanut butter"></option>
+            <option value="chocolate chips"></option>
+            <option value="Nutella"></option>
+            <option value="raisins"></option>
+            <option value="eggs"></option>
+            <option value="green olives"></option>
+            <option value="broccoli"></option>
+        </datalist>
+    </body>
+</html>

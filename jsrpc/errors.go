@@ -35,7 +35,7 @@ func newErrorSource(b *Browser, formID string) *errorSource {
 			return
 		}
 
-		e.form = newForm(vb.source)
+		e.form = newForm(vb)
 		e.state.Store(js.ValueOf(e.form.errors()))
 	}()
 

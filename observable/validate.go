@@ -49,9 +49,8 @@ func ValidateSource(s Source) error {
 	}
 
 	for _, key := range s.Keys() {
-		if s, ok := s.Value(key).(ModelValidator); ok {
-			ss := NewModel(s)
-			keyResult := ValidateSource(ss).(ValidationError)
+		if s, ok := s.Value(key).(Source); ok {
+			keyResult := ValidateSource(s).(ValidationError)
 			if len(keyResult) == 0 {
 				continue
 			}

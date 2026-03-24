@@ -5,6 +5,7 @@ package input
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"syscall/js"
 
 	"github.com/CCorderZugcat/zugoui/jsglue"
@@ -16,10 +17,26 @@ var document = js.Global().Get("document")
 
 // Element finds an element by id
 func Element(id string) (js.Value, error) {
-	elem := document.Call("querySelector", fmt.Sprintf("#%s", id))
-	if elem.Type() != js.TypeObject {
-		return js.Undefined(), fmt.Errorf("%w: id %s", ErrNoElement, id)
+	dots := strings.Split(id, ".")
+	if dots[0] == "" {
+		return js.Undefined(), ErrNoElement
 	}
+
+	elem := document.Call("querySelector", fmt.Sprintf("#%s", dots[0]))
+	if elem.Type() != js.TypeObject {
+		return js.Undefined(), fmt.Errorf("%w: id %s", ErrNoElement, dots[0])
+	}
+
+	for n, name := range dots[1:] {
+		if name == "" {
+			continue
+		}
+		elem = elem.Call("querySelector", fmt.Sprintf("[name='%s']", name))
+		if elem.Type() != js.TypeObject {
+			return js.Undefined(), fmt.Errorf("%w: %s", ErrNoElement, strings.Join(dots[:n+2], "."))
+		}
+	}
+
 	return elem, nil
 }
 

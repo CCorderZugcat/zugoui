@@ -8,12 +8,14 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
+	"strings"
 
 	"github.com/coder/websocket"
 
 	"github.com/CCorderZugcat/zugoui/controller"
 	"github.com/CCorderZugcat/zugoui/observable"
-	"github.com/CCorderZugcat/zugoui/samples/contact-us/model"
+	"github.com/CCorderZugcat/zugoui/samples/pizza/model"
 	"github.com/CCorderZugcat/zugoui/samples/server"
 )
 
@@ -34,7 +36,7 @@ func main() {
 
 	fsys := os.DirFS(flag.Arg(0))
 
-	const ep = "/anon/contact/app/rpc"
+	const ep = "/user/pizza/app/rpc"
 
 	mux := http.NewServeMux()
 	mux.HandleFunc(ep, handleRPC)
@@ -56,9 +58,22 @@ func main() {
 	}
 }
 
-func nope(w http.ResponseWriter, statusCode int, err error) {
-	w.WriteHeader(statusCode)
-	fmt.Fprintf(w, "%s %v\r\n", http.StatusText(statusCode), err)
+func syncToppings(m, buttons observable.MutableSource, toppings []*model.Topping, offset int) {
+	setTopping := func(n int) {
+		keyPath := fmt.Sprintf("Toppings.%d", n-offset)
+		if n < len(toppings) {
+			m.SetValue(keyPath, toppings[n])
+		} else {
+			m.SetValue(keyPath, &model.Topping{})
+		}
+	}
+
+	buttons.SetValue("Up", offset == 0)
+	buttons.SetValue("Down", (len(toppings)-offset) <= 3)
+
+	for i := range 3 {
+		setTopping(offset + i)
+	}
 }
 
 func handleRPC(w http.ResponseWriter, r *http.Request) {
@@ -67,7 +82,8 @@ func handleRPC(w http.ResponseWriter, r *http.Request) {
 	// step 1: create a web socket
 	ws, err := websocket.Accept(w, r, nil)
 	if err != nil {
-		nope(w, http.StatusInternalServerError, err)
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintf(w, "%v\r\n", err)
 		return
 	}
 	defer ws.CloseNow()
@@ -81,71 +97,62 @@ func handleRPC(w http.ResponseWriter, r *http.Request) {
 	defer c.Release()
 
 	// step 3: establish your model and its data.
-	m := &model.ContactForm{
-		Subject: "Zugcat Inquiries", // a default value
+	m := &model.Pizza{
+		Size: "medium",
 	}
+
+	buttons := observable.NewModel(&model.Buttons{})
 
 	// NewModel creates an Observable proxy to your model's data.
 	// You may create as many model and associated observable proxies as you like.
 	o := observable.NewModel(&m)
+	defer o.Release()
 
-	co := observable.NewModel(&model.ContactControls{})
+	toppingOffset := 0
+	toppings := make([]*model.Topping, 1)
+	toppings[0] = &model.Topping{
+		Show:    true,
+		Topping: "broccoli",
+	}
+	syncToppings(o, buttons, toppings, toppingOffset)
 
-	// we're going to fail our action once every 3rd time
-	tries := 0
+	o.AddObserver("", observable.NewActionObserver(func(string, any) {
+		fmt.Printf("PIZZA: size=%s\n", m.Size)
+		for _, topping := range toppings {
+			fmt.Printf("\t%s\n", topping.Topping)
+		}
+		fmt.Printf("\n")
+	}))
 
 	// HandleActions sets the functio to execute for click actions (e.g. buttons and menus)
 	// Call this first, and only once to not miss events.
 	c.HandleActions(func(action string) {
 		switch action {
-		case "submit":
-			fmt.Printf("submit button clicked: %+v\n", *m)
+		case "add":
+			toppingOffset = 0
+			toppings = append([]*model.Topping{{Show: true}}, toppings...)
 
-			detail := map[string]any{
-				"ok":      true,
-				"message": "Sent",
+		case "up":
+			if toppingOffset > 0 {
+				toppingOffset--
 			}
 
-			// fail this occasionally
-			tries++
-			if (tries % 3) == 0 {
-				detail["ok"] = false
-				detail["message"] = "Could not make any toast"
-
-				fmt.Printf("failing this one\n")
-			} else {
-				// do server side validation
-				if err := observable.ValidateSource(o); err != nil {
-					fmt.Printf("client sent invalid data: %v\n", err)
-					detail["ok"] = false
-					detail["message"] = "Form has validation errors."
-				}
+		case "down":
+			if toppingOffset < (len(toppings) - 3) {
+				toppingOffset++
 			}
 
-			co.SetValue("Status", detail["message"])
+		case "remove.0", "remove.1", "remove.2":
+			n, _ := strconv.Atoi(strings.TrimPrefix(action, "remove."))
+			n += toppingOffset
 
-			if detail["ok"].(bool) {
-				// now, let's disable the submit button
-				co.SetValue("SubmitDisabled", true)
+			if n < len(toppings) {
+				copy(toppings[n:], toppings[n+1:])
+				toppings = toppings[:len(toppings)-1]
 			}
-
-			// this form's logic wants an event upon completion
-			if err := c.Browser.DispatchEvent("contact-submitted", detail); err != nil {
-				fmt.Fprintf(os.Stderr, "failed to dispatch submit event: %v\n", err)
-			}
-
-		case "reset":
-			// a real application might have a default template
-			o.SetValue("Subject", "Zugcat Inquiries")
-			o.SetValue("Message", "This user cannot make up their mind.")
-			o.SetValue("First", "")
-			o.SetValue("Last", "")
-			o.SetValue("Email", "")
-
-			// reset the UI elements
-			co.SetValue("Status", "")
-			co.SetValue("SubmitDisabled", false)
 		}
+
+		syncToppings(o, buttons, toppings, toppingOffset)
 	})
 
 	// BindActions establishes which UI elements send actions if clicked.
@@ -154,8 +161,12 @@ func handleRPC(w http.ResponseWriter, r *http.Request) {
 	// Thus, it calls "sendAction" on its own post-validation submit logic.
 	// Otherwise, we can handle it automatically here without any client side code.
 	if err := c.BindActions(
-		"submit", "submit",
-		"reset", "reset",
+		"pizza.add", "add",
+		"pizza.up", "up",
+		"pizza.down", "down",
+		"pizza.toppings.0.remove", "remove.0",
+		"pizza.toppings.1.remove", "remove.1",
+		"pizza.toppings.2.remove", "remove.2",
 	); err != nil {
 		fmt.Fprintf(os.Stderr, "failed to bind actions: %v\n", err)
 	}
@@ -163,11 +174,11 @@ func handleRPC(w http.ResponseWriter, r *http.Request) {
 	// BindValue binds the observable model proxy with the UI.
 	// Multiple models or instances of the same model may be bound.
 	// Use a unique name for each instance.
-	if err := c.BindValues("contactUs", "contact", []string{"contact"}, o); err != nil {
+	if err := c.BindValues("pizza", "pizza", []string{"pizza"}, o); err != nil {
 		fmt.Fprintf(os.Stderr, "unable to bind model observer: %v\n", err)
 	}
-	if err := c.BindValues("contactUI", "", nil, co); err != nil {
-		fmt.Fprintf(os.Stderr, "unabel to find controls: %v\n", err)
+	if err := c.BindValues("controls", "", []string{"pizza"}, buttons); err != nil {
+		fmt.Fprintf(os.Stderr, "unable to bind model controls: %v\n", err)
 	}
 
 	<-done

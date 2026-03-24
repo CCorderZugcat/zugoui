@@ -27,7 +27,7 @@ func TestClickBinding(t *testing.T) {
 	b := input.NewClickBinding("button1", "button1", func(name string) {
 		action <- name
 	})
-	defer b.Destroy()
+	defer b.Release()
 
 	elem.Call("click")
 	assert.Equal(t, "button1", <-action)

@@ -21,7 +21,7 @@ func TestWriter(t *testing.T) {
 	source.AddObserver("Field", os)
 
 	w := observable.NewWriter(source)
-	defer w.RemoveAllObservers()
+	defer w.Release()
 
 	ow, cw := observabletest.New()
 	defer close(cw)
@@ -49,7 +49,7 @@ func TestWriter(t *testing.T) {
 	assert.Equal(t, "update", source.Value("Field"))
 
 	w2 := observable.NewWriter(w)
-	defer w2.RemoveAllObservers()
+	defer w2.Release()
 
 	o2, c2 := observabletest.New()
 	defer close(c2)
