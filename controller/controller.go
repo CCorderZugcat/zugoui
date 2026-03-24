@@ -4,9 +4,7 @@ package controller
 import (
 	"errors"
 	"fmt"
-	"reflect"
 	"strings"
-	"sync"
 
 	"github.com/CCorderZugcat/zugoui/observable"
 	"github.com/CCorderZugcat/zugoui/wsrpc"
@@ -19,14 +17,12 @@ var (
 // Controller handles the interaction of observable bindings between the model and the browser.
 // It also handles action bindings with clickable objects.
 type Controller struct {
-	Browswer wsrpc.Browser
+	Browser wsrpc.Browser
 
-	lck         sync.RWMutex
-	server      *wsrpc.Server
-	bindings    map[string]*binding
-	actions     map[string][]int64
-	controllers map[string]*Controller
-	prefix      string // namespace with trailing dot
+	server   *wsrpc.Server
+	bindings map[string]*binding
+	actions  map[string][]int64
+	prefix   string // namespace with trailing dot
 }
 
 type binding struct {
@@ -39,12 +35,11 @@ type binding struct {
 // namespace specifies the browser's binding namespace to use with this Controller's instance.
 func New(server *wsrpc.Server, browser wsrpc.Browser, namespace string) *Controller {
 	return &Controller{
-		server:      server,
-		Browswer:    browser,
-		bindings:    make(map[string]*binding),
-		actions:     make(map[string][]int64),
-		controllers: make(map[string]*Controller),
-		prefix:      namespace + ".",
+		server:   server,
+		Browser:  browser,
+		bindings: make(map[string]*binding),
+		actions:  make(map[string][]int64),
+		prefix:   namespace + ".",
 	}
 }
 
@@ -52,44 +47,38 @@ func New(server *wsrpc.Server, browser wsrpc.Browser, namespace string) *Control
 func (c *Controller) Release() {
 	for k, v := range c.bindings {
 		c.server.RemoveValueObservers(k)
-		v.observing.RemoveAllObservers()
+		v.observing.Release()
 		for _, h := range v.handles {
-			c.Browswer.Unbind(h)
+			c.Browser.Unbind(h)
 		}
 	}
 	clear(c.bindings)
 
-	c.server.RemoveActionObservers()
+	c.server.ReleaseActionObservers()
 	for _, v := range c.actions {
 		for _, h := range v {
-			c.Browswer.Unbind(h)
+			c.Browser.Unbind(h)
 		}
 	}
 	clear(c.actions)
-
-	for _, v := range c.controllers {
-		v.Release()
-	}
 }
 
 // HandleActions sets the callback for actions
 func (c *Controller) HandleActions(handler func(action string)) {
 	c.server.AddActionObserver(observable.NewActionObserver(func(_ string, value any) {
 		fullName, _ := value.(string)
-		if strings.HasPrefix(fullName, c.prefix) {
-			handler(strings.Trim(fullName, c.prefix))
-		} else if strings.HasPrefix(fullName, "global.") {
-			handler(strings.Trim(fullName, "global."))
+
+		if name, ok := strings.CutPrefix(fullName, c.prefix); ok {
+			handler(name)
+		} else if name, ok := strings.CutPrefix(fullName, "global."); ok {
+			handler(name)
 		}
 	}))
 }
 
 // BindAction creates an action binding. Call HandleActions first.
 func (c *Controller) BindAction(element, action string) error {
-	c.lck.Lock()
-	defer c.lck.Unlock()
-
-	handle, err := c.Browswer.NewClickBinding(element, c.prefix+action)
+	handle, err := c.Browser.NewClickBinding(element, c.prefix+action)
 	if err != nil {
 		return err
 	}
@@ -111,18 +100,13 @@ func (c *Controller) BindActions(pairs ...string) error {
 	return nil
 }
 
-// BindValue creates an arbitrary value binding.
-// If o is observing a struct with bind tags, elements may be nil or empty.
-// To recursively bind all structures with bind tags, use BindModel isntead.
-func (c *Controller) BindValue(
+// BindValues creates value bindings.
+func (c *Controller) BindValues(
 	name string,
+	formID string,
 	elements []string,
-	property string,
 	source observable.Source,
 ) error {
-	c.lck.Lock()
-	defer c.lck.Unlock()
-
 	action := c.prefix + name
 
 	if m, ok := source.(observable.MutableSource); ok {
@@ -134,10 +118,10 @@ func (c *Controller) BindValue(
 		source = m
 	}
 
-	handle, err := c.Browswer.NewValueBinding(
+	handle, err := c.Browser.NewValueBinding(
 		action,
+		formID,
 		elements,
-		property,
 		source.Model().Interface(),
 	)
 	if err != nil {
@@ -156,35 +140,7 @@ func (c *Controller) BindValue(
 		c.bindings[action] = b
 	}
 
-	source.AddObserver("", wsrpc.Observer{Browser: c.Browswer, Handle: handle})
+	source.AddObserver("", wsrpc.Observer{Browser: c.Browser, Handle: handle})
 
-	return nil
-}
-
-// BindModel recursively binds a structure with bind tags.
-func (c *Controller) BindModel(name string, m observable.Source) error {
-	if err := c.BindValue(name, nil, "value", m); err != nil {
-		return err
-	}
-	if m.Model().Kind() == reflect.Struct {
-		for _, key := range m.Keys() {
-			elem := m.Value(key)
-
-			source, ok := elem.(observable.MutableSource)
-			if !ok {
-				value := observable.MutableValue(reflect.ValueOf(elem))
-				if !value.IsValid() {
-					continue
-				}
-				if value.Kind() == reflect.Struct {
-					source = observable.NewModelValue(value)
-				}
-			}
-
-			if err := c.BindModel(name+"."+key, source); err != nil {
-				return err
-			}
-		}
-	}
 	return nil
 }

@@ -125,7 +125,7 @@ func (b *Browser) form(formID string) any {
 		if err != nil {
 			return nil, err
 		}
-		return newForm(vb.source).JsObject(), nil
+		return newForm(vb).JsObject(), nil
 	})
 }
 

@@ -13,7 +13,7 @@ import (
 	"github.com/CCorderZugcat/zugoui/input"
 )
 
-func TestInput(t *testing.T) {
+func TestInputValue(t *testing.T) {
 	formtest.SetBody(t, fsys, "value.html")
 
 	field1, err := input.Element("field1")

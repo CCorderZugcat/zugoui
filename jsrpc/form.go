@@ -4,6 +4,7 @@ package jsrpc
 
 import (
 	"fmt"
+	"maps"
 	"syscall/js"
 
 	"github.com/CCorderZugcat/zugoui/jsglue"
@@ -19,19 +20,15 @@ type form struct {
 	keys   map[string]string   // id to key
 }
 
-func newForm(source observable.Source) *form {
+func newForm(vb *valueBindings) *form {
 	f := &form{
-		source: source,
+		source: vb.source,
 		fields: make(map[string][]string),
-		keys:   make(map[string]string),
+		keys:   maps.Clone(vb.bindings.IDPaths),
 	}
 
-	for _, key := range source.Keys() {
-		for _, tag := range source.Tag(key, "bind") {
-			id, _ := idAndProperty(tag)
-			f.fields[key] = append(f.fields[key], id)
-			f.keys[id] = key
-		}
+	for k, v := range f.keys {
+		f.fields[v] = append(f.fields[v], k)
 	}
 
 	return f
@@ -54,9 +51,7 @@ func (f *form) JsObject() map[string]any {
 			cb.Invoke(f.errors())
 
 			observer := f.newErrorSubscription(cb)
-			return unsubscriber(func() {
-				f.source.RemoveObserver("", observer)
-			})
+			return unsubscriber(observer.Release)
 		}),
 
 		// getValue(key: string): any
@@ -88,10 +83,8 @@ func (f *form) JsObject() map[string]any {
 		"getSnapshot": f.funcs.FuncOf(func(js.Value, []js.Value) any {
 			snapshot := make(map[string]any)
 
-			for _, key := range f.source.Keys() {
-				for _, id := range f.fields[key] {
-					snapshot[id], _ = jstypes.ValueOf(f.source.Value(key))
-				}
+			for k, v := range f.keys {
+				snapshot[k], _ = jstypes.ValueOf(f.source.Value(v))
 			}
 
 			return snapshot
@@ -110,9 +103,7 @@ func (f *form) JsObject() map[string]any {
 			}
 
 			observer := f.newSubscription(id, key, args[1])
-			return unsubscriber(func() {
-				f.source.RemoveObserver(key, observer)
-			})
+			return unsubscriber(observer.Release)
 		}),
 
 		// release(void): void
@@ -157,7 +148,7 @@ func (f *form) errors() any {
 // newSubscription returns a subscription to the whole form or a field in it
 func (f *form) newSubscription(id, key string, callback js.Value) *subscription {
 	s := &subscription{form: f, callback: callback, id: id}
-	f.source.AddObserver(key, s)
+	f.source.AddObserver("", s)
 	return s
 }
 
@@ -173,23 +164,28 @@ type subscription struct {
 	form     *form
 	id       string
 	callback js.Value
+	source   observable.Source
 }
 
 func (s *subscription) SetValue(key string, value any) {
-	for _, id := range s.form.fields[key] {
-		if id == "" || id == s.id {
-			s.callback.Invoke()
-			return
-		}
-	}
+	s.callback.Invoke()
+}
+
+func (s *subscription) Release() {
+	s.source.RemoveObserver("", s)
 }
 
 type errorSubscription struct {
 	observable.NullObserver
 	form     *form
 	callback js.Value
+	source   observable.Source
 }
 
 func (e *errorSubscription) SetValue(key string, value any) {
 	e.callback.Invoke(e.form.errors())
+}
+
+func (e *errorSubscription) Release() {
+	e.source.RemoveObserver("", e)
 }

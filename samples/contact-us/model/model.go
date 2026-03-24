@@ -14,13 +14,16 @@ var ErrTooLong = errors.New("too long")
 
 // ContactForm
 type ContactForm struct {
-	First       string `bind:"fname"`
-	Last        string `bind:"lname"`
-	Email       string `bind:"email"`
-	Subject     string `bind:"subject"`
-	Message     string `bind:"message"`
-	EmailStatus string `bind:"emailStatus>innerText"` // property binding override
-	// button ID is "submit"
+	First   string `bind:"fname"`
+	Last    string `bind:"lname"`
+	Email   string `bind:"email"`
+	Subject string `bind:"subject"`
+	Message string `bind:"message"`
+}
+
+type ContactControls struct {
+	Status         string `bind:"emailStatus>innerText"`
+	SubmitDisabled bool   `bind:"submit>disabled"`
 }
 
 func checkString(errors observable.ValidationError, name, s string, maxLen int) {
@@ -56,4 +59,5 @@ func init() {
 	// It is critical the shared model types are registered with gob.
 	// Use an init method in your shared pacakge to do this automatically.
 	gob.Register(new(ContactForm))
+	gob.Register(new(ContactControls))
 }

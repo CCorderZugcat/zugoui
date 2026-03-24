@@ -69,7 +69,7 @@ func Main(ctx context.Context, endpoint string) (err error) {
 
 	server := &jsrpc.Server{}
 	browser := jsrpc.New(server)
-	defer browser.Destroy()
+	defer browser.Release()
 
 	rpcServer := rpc.NewServer()
 	if err := rpcServer.Register(browser); err != nil {

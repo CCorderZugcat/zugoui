@@ -62,7 +62,7 @@ func endpoints(
 		sp_c.Close()
 		bp_c.Close()
 		wg.Wait()
-		b.Destroy()
+		b.Release()
 	}
 }
 
@@ -84,7 +84,7 @@ func TestObjectBinding(t *testing.T) {
 		Quantity: 1,
 	}
 
-	h, err := bclient.NewValueBinding("products", nil, "value", &m)
+	h, err := bclient.NewValueBinding("products", "products", nil, &m)
 	require.NoError(t, err)
 	defer bclient.Unbind(h)
 
@@ -98,6 +98,7 @@ func TestObjectBinding(t *testing.T) {
 
 	// verify UI element is populated
 	assert.Equal(t, m.Product, elem.Get("value").String())
+	t.Log("initial:", elem.Get("value"))
 
 	// change UI element contents (as if a user did with change event)
 	elem.Set("value", "updated")
@@ -106,50 +107,16 @@ func TestObjectBinding(t *testing.T) {
 	t.Log("waiting for browswer side field update")
 	ob1 := <-ch
 
-	assert.Equal(t, ob1.Key, "Product")
-	assert.Equal(t, ob1.Value, "updated")
+	assert.Equal(t, "Product", ob1.Key)
+	assert.Equal(t, "updated", ob1.Value)
 
 	// change field from server to browser
 	wsrpc.Observer{Browser: bclient, Handle: h}.SetValue("Product", "updated again")
 
 	// (that call was synchronous)
 	assert.Equal(t, "updated again", elem.Get("value").String())
-}
 
-func TestValueBinding(t *testing.T) {
-	formtest.SetBody(t, fsys, "form.html")
-	elem, err := input.Element("product")
-	require.NoError(t, err)
-
-	s := wsrpc.New()
-	_, bclient, sclient, stop := endpoints(t, s)
-	defer stop()
-
-	vo, vc := observabletest.New()
-	defer close(vc)
-
-	s.AddValueObserver("product", vo)
-
-	product := "initial-server-side"
-
-	binding, err := bclient.NewValueBinding("product", []string{"product"}, "value", &product)
-	require.NoError(t, err)
-	defer bclient.Unbind(binding)
-
-	assert.Equal(t, "initial-server-side", elem.Get("value").String())
-
-	elem.Set("value", "user-entered")
-	jsglue.DispatchEvent(elem, "change", map[string]any{"bubbles": true})
-
-	t.Log("waiting for update event (user initiated)")
-	update := <-vc
-	assert.Equal(t, "user-entered", update.Value)
-	assert.Equal(t, "value", update.Key)
-
-	Observer{Server: &sclient, Action: "product"}.SetValue("value", "rpc-test")
-	t.Log("waiting for update event (programatic)")
-	update = <-vc
-	assert.Equal(t, "rpc-test", update.Value)
+	t.Log("updated:", elem.Get("value"))
 }
 
 func TestActionBinding(t *testing.T) {
@@ -176,6 +143,8 @@ func TestActionBinding(t *testing.T) {
 	action := <-ac
 	assert.Equal(t, "myAction", action.Value)
 	assert.Equal(t, "action", action.Key)
+
+	t.Logf("action: %s=%s", action.Value, action.Key)
 }
 
 func TestEventListener(t *testing.T) {
@@ -199,4 +168,5 @@ func TestEventListener(t *testing.T) {
 	assert.Equal(t, "event arg", arg)
 
 	b.removeEventListener("test", cb.Value)
+	t.Logf("event: %s", arg)
 }

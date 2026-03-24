@@ -17,20 +17,19 @@ var object = js.Global().Get("Object")
 func Set(obj any, data js.Value) bool {
 	v := reflect.ValueOf(obj)
 
-	if um, ok := obj.(encoding.TextUnmarshaler); ok && data.Type() == js.TypeString {
-		if err := um.UnmarshalText([]byte(data.String())); err != nil {
-			return false
-		}
-		return true
-	}
-
-	return set(v.Elem(), data)
+	return SetValue(v, data)
 }
 
-func set(v reflect.Value, data js.Value) bool {
+func SetValue(v reflect.Value, data js.Value) bool {
 	if !v.IsValid() {
 		return false
 	}
+	if data.Type() == js.TypeString && v.Type().Implements(reflect.TypeFor[encoding.TextUnmarshaler]()) {
+		if err := v.Interface().(encoding.TextUnmarshaler).UnmarshalText([]byte(data.String())); err == nil {
+			return true
+		}
+	}
+
 	if data.IsNull() || data.IsUndefined() {
 		v.SetZero()
 		return true
@@ -104,7 +103,7 @@ func setStruct(v reflect.Value, data js.Value) bool {
 			continue
 		}
 		fv := v.Field(i)
-		if !set(fv, data.Get(ft.Name)) {
+		if !SetValue(fv, data.Get(ft.Name)) {
 			fv.SetZero()
 		}
 	}
@@ -127,7 +126,7 @@ func setMap(v reflect.Value, data js.Value) bool {
 			continue
 		}
 		mapValue := reflect.New(v.Type().Elem()).Elem()
-		if !set(mapValue, value) {
+		if !SetValue(mapValue, value) {
 			continue
 		}
 		v.SetMapIndex(mapKey, mapValue)
@@ -141,7 +140,7 @@ func setSlice(v reflect.Value, data js.Value) bool {
 
 	for elem := range Iter(data) {
 		ev := reflect.New(v.Type().Elem()).Elem()
-		set(ev, elem) // leave at zero value if returned false
+		SetValue(ev, elem) // leave at zero value if returned false
 		v.Set(reflect.Append(v, ev))
 	}
 
@@ -155,7 +154,7 @@ func setArray(v reflect.Value, data js.Value) bool {
 			return false
 		}
 		vi := v.Index(index)
-		if !set(vi, elem) {
+		if !SetValue(vi, elem) {
 			vi.SetZero()
 		}
 

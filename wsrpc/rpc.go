@@ -61,9 +61,9 @@ func (s *Server) AddActionObserver(observer observable.Observer) {
 	s.actionObservers.AddObserver("action", observer)
 }
 
-// RemoveActionObservers removes all action observers for an action
-func (s *Server) RemoveActionObservers() {
-	s.actionObservers.RemoveAllObservers()
+// ReleaseActionObservers removes all action observers for an action
+func (s *Server) ReleaseActionObservers() {
+	s.actionObservers.Release()
 }
 
 func (s *Server) observerAt(action string) *observable.Observe {

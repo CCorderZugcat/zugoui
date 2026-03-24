@@ -9,8 +9,8 @@ type DispatchEventReq struct {
 // NewValueBindingReq NewValueBinding request
 type NewValueBindingReq struct {
 	Action     string   // action name
+	FormID     string   // formID for which Model is main data source
 	ElementIDs []string // element IDs
-	Property   string   // property of the element (special case for "value")
 	Model      any      // initial value and also establishes the type
 }
 

@@ -5,9 +5,10 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/CCorderZugcat/zugoui/observable"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/CCorderZugcat/zugoui/observable"
 )
 
 type myModel struct {
