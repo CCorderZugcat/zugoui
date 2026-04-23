@@ -13,6 +13,7 @@ import (
 
 	"github.com/CCorderZugcat/zugoui/controller"
 	"github.com/CCorderZugcat/zugoui/observable"
+	"github.com/CCorderZugcat/zugoui/observable/controllers"
 	"github.com/CCorderZugcat/zugoui/samples/contact-us/model"
 	"github.com/CCorderZugcat/zugoui/samples/server"
 )
@@ -87,78 +88,63 @@ func handleRPC(w http.ResponseWriter, r *http.Request) {
 
 	// NewModel creates an Observable proxy to your model's data.
 	// You may create as many model and associated observable proxies as you like.
-	o := observable.NewModel(&m)
-
-	co := observable.NewModel(&model.ContactControls{})
+	o := controllers.New(&m)
+	co := controllers.New(&model.ContactControls{})
 
 	// we're going to fail our action once every 3rd time
 	tries := 0
 
-	// HandleActions sets the functio to execute for click actions (e.g. buttons and menus)
-	// Call this first, and only once to not miss events.
-	c.HandleActions(func(action string) {
-		switch action {
-		case "submit":
-			fmt.Printf("submit button clicked: %+v\n", *m)
+	// bind an action called "submit" to the button whose ID is "submit"
+	c.BindAction("submit", "submit", func(string) {
+		fmt.Printf("submit button clicked: %+v\n", *m)
 
-			detail := map[string]any{
-				"ok":      true,
-				"message": "Sent",
-			}
+		detail := map[string]any{
+			"ok":      true,
+			"message": "Sent",
+		}
 
-			// fail this occasionally
-			tries++
-			if (tries % 3) == 0 {
+		// fail this occasionally
+		tries++
+		if (tries % 3) == 0 {
+			detail["ok"] = false
+			detail["message"] = "Could not make any toast"
+
+			fmt.Printf("failing this one\n")
+		} else {
+			// do server side validation
+			if err := observable.ValidateSource(o); err != nil {
+				fmt.Printf("client sent invalid data: %v\n", err)
 				detail["ok"] = false
-				detail["message"] = "Could not make any toast"
-
-				fmt.Printf("failing this one\n")
-			} else {
-				// do server side validation
-				if err := observable.ValidateSource(o); err != nil {
-					fmt.Printf("client sent invalid data: %v\n", err)
-					detail["ok"] = false
-					detail["message"] = "Form has validation errors."
-				}
+				detail["message"] = "Form has validation errors."
 			}
+		}
 
-			co.SetValue("Status", detail["message"])
+		co.SetValue("Status", detail["message"])
 
-			if detail["ok"].(bool) {
-				// now, let's disable the submit button
-				co.SetValue("SubmitDisabled", true)
-			}
+		if detail["ok"].(bool) {
+			// now, let's disable the submit button
+			co.SetValue("SubmitDisabled", true)
+		}
 
-			// this form's logic wants an event upon completion
-			if err := c.Browser.DispatchEvent("contact-submitted", detail); err != nil {
-				fmt.Fprintf(os.Stderr, "failed to dispatch submit event: %v\n", err)
-			}
-
-		case "reset":
-			// a real application might have a default template
-			o.SetValue("Subject", "Zugcat Inquiries")
-			o.SetValue("Message", "This user cannot make up their mind.")
-			o.SetValue("First", "")
-			o.SetValue("Last", "")
-			o.SetValue("Email", "")
-
-			// reset the UI elements
-			co.SetValue("Status", "")
-			co.SetValue("SubmitDisabled", false)
+		// this form's logic wants an event upon completion
+		if err := c.Browser.DispatchEvent("contact-submitted", detail); err != nil {
+			fmt.Fprintf(os.Stderr, "failed to dispatch submit event: %v\n", err)
 		}
 	})
 
-	// BindActions establishes which UI elements send actions if clicked.
-	// The action name is passed to your function in HandleActions
-	// "submit" in this example is commented out for a form that opts to do its own validation logic.
-	// Thus, it calls "sendAction" on its own post-validation submit logic.
-	// Otherwise, we can handle it automatically here without any client side code.
-	if err := c.BindActions(
-		"submit", "submit",
-		"reset", "reset",
-	); err != nil {
-		fmt.Fprintf(os.Stderr, "failed to bind actions: %v\n", err)
-	}
+	// Bind the reset button's action
+	c.BindAction("reset", "reset", func(string) {
+		// a real application might have a default template
+		o.SetValue("Subject", "Zugcat Inquiries")
+		o.SetValue("Message", "This user cannot make up their mind.")
+		o.SetValue("First", "")
+		o.SetValue("Last", "")
+		o.SetValue("Email", "")
+
+		// reset the UI elements
+		co.SetValue("Status", "")
+		co.SetValue("SubmitDisabled", false)
+	})
 
 	// BindValue binds the observable model proxy with the UI.
 	// Multiple models or instances of the same model may be bound.

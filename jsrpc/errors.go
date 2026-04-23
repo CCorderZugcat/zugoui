@@ -76,7 +76,6 @@ func (e *errorSource) release() {
 
 func (e *errorSource) subscribe(cb js.Value) func() {
 	done := make(chan struct{})
-	cleanup := make(chan func(), 1)
 
 	go func(cb js.Value) {
 		var f *form
@@ -88,7 +87,6 @@ func (e *errorSource) subscribe(cb js.Value) func() {
 		}
 
 		if f == nil {
-			close(cleanup)
 			return
 		}
 
@@ -99,16 +97,13 @@ func (e *errorSource) subscribe(cb js.Value) func() {
 			cb.Invoke()
 		})
 
-		f.source.AddObserver("", o)
-		cleanup <- func() {
-			f.source.RemoveObserver("", o)
-		}
+		so := observable.NewPathObserver("*", f.source)
+		so.AddObserver("", o)
+		<-done
+		so.Release()
 	}(cb)
 
 	return func() {
 		close(done)
-		if cleanup, ok := <-cleanup; ok {
-			cleanup()
-		}
 	}
 }

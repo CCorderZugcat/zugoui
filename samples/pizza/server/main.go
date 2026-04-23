@@ -8,13 +8,13 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strconv"
-	"strings"
 
 	"github.com/coder/websocket"
 
 	"github.com/CCorderZugcat/zugoui/controller"
 	"github.com/CCorderZugcat/zugoui/observable"
+	"github.com/CCorderZugcat/zugoui/observable/controllers"
+	"github.com/CCorderZugcat/zugoui/observable/controllers/scroll"
 	"github.com/CCorderZugcat/zugoui/samples/pizza/model"
 	"github.com/CCorderZugcat/zugoui/samples/server"
 )
@@ -58,28 +58,9 @@ func main() {
 	}
 }
 
-func syncToppings(m, buttons observable.MutableSource, toppings []*model.Topping, offset int) {
-	setTopping := func(n int) {
-		keyPath := fmt.Sprintf("Toppings.%d", n-offset)
-		if n < len(toppings) {
-			m.SetValue(keyPath, toppings[n])
-		} else {
-			m.SetValue(keyPath, &model.Topping{})
-		}
-	}
-
-	buttons.SetValue("Up", offset == 0)
-	buttons.SetValue("Down", (len(toppings)-offset) <= 3)
-
-	for i := range 3 {
-		setTopping(offset + i)
-	}
-}
-
 func handleRPC(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	// step 1: create a web socket
 	ws, err := websocket.Accept(w, r, nil)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -88,7 +69,6 @@ func handleRPC(w http.ResponseWriter, r *http.Request) {
 	}
 	defer ws.CloseNow()
 
-	// step 2: start a controller.
 	c, done, err := controller.Start(ctx, ws)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "unable to start controller: %v\n", err)
@@ -96,84 +76,72 @@ func handleRPC(w http.ResponseWriter, r *http.Request) {
 	}
 	defer c.Release()
 
-	// step 3: establish your model and its data.
 	m := &model.Pizza{
 		Size: "medium",
+		Toppings: []*model.Topping{
+			{
+				Show:    true,
+				Topping: "broccoli",
+			},
+		},
 	}
 
-	buttons := observable.NewModel(&model.Buttons{})
+	buttons := controllers.New(&model.Buttons{})
+	defer buttons.Release()
 
-	// NewModel creates an Observable proxy to your model's data.
-	// You may create as many model and associated observable proxies as you like.
-	o := observable.NewModel(&m)
+	o := controllers.New(&m)
 	defer o.Release()
 
-	toppingOffset := 0
-	toppings := make([]*model.Topping, 1)
-	toppings[0] = &model.Topping{
-		Show:    true,
-		Topping: "broccoli",
-	}
-	syncToppings(o, buttons, toppings, toppingOffset)
-
-	o.AddObserver("", observable.NewActionObserver(func(string, any) {
-		fmt.Printf("PIZZA: size=%s\n", m.Size)
-		for _, topping := range toppings {
-			fmt.Printf("\t%s\n", topping.Topping)
-		}
-		fmt.Printf("\n")
-	}))
-
-	// HandleActions sets the functio to execute for click actions (e.g. buttons and menus)
-	// Call this first, and only once to not miss events.
-	c.HandleActions(func(action string) {
-		switch action {
-		case "add":
-			toppingOffset = 0
-			toppings = append([]*model.Topping{{Show: true}}, toppings...)
-
-		case "up":
-			if toppingOffset > 0 {
-				toppingOffset--
+	/*
+		p := observable.NewPathObserver("*", o)
+		p.AddObserver("", observable.NewActionObserver(func(string, any) {
+			fmt.Printf("PIZZA: size=%s\n", m.Size)
+			for n, topping := range m.Toppings {
+				if topping == nil {
+					fmt.Printf("\t%d is nil\n", n)
+					continue
+				}
+				fmt.Printf("\t%d: %s\n", n, topping.Topping)
 			}
+			fmt.Printf("\n")
+		}))
+	*/
 
-		case "down":
-			if toppingOffset < (len(toppings) - 3) {
-				toppingOffset++
-			}
+	toppingsView := o.Value("Toppings").(*scroll.Scroll)
+	toppings := toppingsView.Source().(observable.MutableSource)
 
-		case "remove.0", "remove.1", "remove.2":
-			n, _ := strconv.Atoi(strings.TrimPrefix(action, "remove."))
-			n += toppingOffset
-
-			if n < len(toppings) {
-				copy(toppings[n:], toppings[n+1:])
-				toppings = toppings[:len(toppings)-1]
-			}
-		}
-
-		syncToppings(o, buttons, toppings, toppingOffset)
+	c.BindAction("pizza.add", "add", func(string) {
+		toppingsView.Insert("add")
+		observable.SetKeyPath(toppingsView, "0.Show", true)
 	})
 
-	// BindActions establishes which UI elements send actions if clicked.
-	// The action name is passed to your function in HandleActions
-	// "submit" in this example is commented out for a form that opts to do its own validation logic.
-	// Thus, it calls "sendAction" on its own post-validation submit logic.
-	// Otherwise, we can handle it automatically here without any client side code.
-	if err := c.BindActions(
-		"pizza.add", "add",
-		"pizza.up", "up",
-		"pizza.down", "down",
-		"pizza.toppings.0.remove", "remove.0",
-		"pizza.toppings.1.remove", "remove.1",
-		"pizza.toppings.2.remove", "remove.2",
-	); err != nil {
-		fmt.Fprintf(os.Stderr, "failed to bind actions: %v\n", err)
-	}
+	c.BindAction("pizza.up", "up", toppingsView.Up)
+	c.BindAction("pizza.down", "down", toppingsView.Down)
 
-	// BindValue binds the observable model proxy with the UI.
-	// Multiple models or instances of the same model may be bound.
-	// Use a unique name for each instance.
+	c.BindAction("pizza.toppings.0.remove", "remove.0", func(string) {
+		toppings.RemoveValueAt(0)
+	})
+	c.BindAction("pizza.toppings.1.remove", "remove.1", func(string) {
+		toppings.RemoveValueAt(1)
+	})
+	c.BindAction("pizza.toppings.2.remove", "remove.2", func(string) {
+		toppings.RemoveValueAt(2)
+	})
+
+	canUp, _ := observable.NewBinding(
+		"canUp", toppingsView,
+		"Up", buttons,
+		"isZero",
+	)
+	defer canUp.Release()
+
+	canDown, _ := observable.NewBinding(
+		"canDown", toppingsView,
+		"Down", buttons,
+		"isZero",
+	)
+	defer canDown.Release()
+
 	if err := c.BindValues("pizza", "pizza", []string{"pizza"}, o); err != nil {
 		fmt.Fprintf(os.Stderr, "unable to bind model observer: %v\n", err)
 	}

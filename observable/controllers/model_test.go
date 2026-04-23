@@ -1,4 +1,4 @@
-package observable_test
+package controllers_test
 
 import (
 	"reflect"
@@ -8,12 +8,13 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/CCorderZugcat/zugoui/observable"
+	"github.com/CCorderZugcat/zugoui/observable/controllers"
 	"github.com/CCorderZugcat/zugoui/observable/observabletest"
 )
 
 func TestMapObserver(t *testing.T) {
 	m := make(map[string]int)
-	o := observable.NewModel(&m)
+	o := controllers.New(&m)
 	require.NotNil(t, o)
 
 	testObserver(t, o)
@@ -27,7 +28,7 @@ func TestStructModel(t *testing.T) {
 		Three int
 	}
 	m := model{}
-	o := observable.NewModel(&m)
+	o := controllers.New(&m)
 	require.NotNil(t, o)
 
 	testObserver(t, o)
@@ -36,7 +37,7 @@ func TestStructModel(t *testing.T) {
 	assert.ElementsMatch(t, []string{"too", "two", "to"}, o.Tag("Two", "kabloouie"))
 }
 
-func testObserver(t testing.TB, o *observable.Model) {
+func testObserver(t testing.TB, o *controllers.Model) {
 	t.Helper()
 
 	ob, ch := observabletest.New()
@@ -57,7 +58,7 @@ func testObserver(t testing.TB, o *observable.Model) {
 
 func TestValueObserver(t *testing.T) {
 	m := "hello"
-	o := observable.NewModelValue(reflect.ValueOf(&m).Elem())
+	o := controllers.NewValue(reflect.ValueOf(&m).Elem())
 	require.NotNil(t, o)
 
 	assert.Equal(t, m, o.Interface())
@@ -78,7 +79,7 @@ func TestValueObserver(t *testing.T) {
 
 func TestSliceObserver(t *testing.T) {
 	m := []int{1, 2, 3}
-	o := observable.NewModel(&m)
+	o := controllers.New(&m)
 	require.NotNil(t, o)
 
 	o.SetValue("1", 5)
@@ -106,7 +107,7 @@ func TestSliceObserver(t *testing.T) {
 func TestMapObserverKeyType(t *testing.T) {
 	type myString string
 	var m map[myString]int
-	o := observable.NewModel(&m)
+	o := controllers.New(&m)
 	require.NotNil(t, o)
 
 	o.SetValueFor("one", 1)
@@ -125,7 +126,7 @@ func TestMapObserverKeyType(t *testing.T) {
 
 func TestSlice(t *testing.T) {
 	dst, src := make([]int, 0), make([]int, 0)
-	dm, sm := observable.NewModel(&dst), observable.NewModel(&src)
+	dm, sm := controllers.New(&dst), controllers.New(&src)
 
 	sm.AddObserver("value", dm) // observing "value" keeps us to deltas
 	sm.InsertValueAt(0, 3)
@@ -136,43 +137,69 @@ func TestSlice(t *testing.T) {
 	assert.Equal(t, []int{1, 2, 3}, dst)
 }
 
+func TestSliceGrowth(t *testing.T) {
+	s := make([]int, 0)
+	m := controllers.New(&s)
+
+	m.InsertValueAt(5, 1)
+	assert.Equal(t, []int{0, 0, 0, 0, 0, 1}, s)
+
+	s = s[:0]
+	assert.Equal(t, 0, m.Value("len").(int))
+
+	m.SetValueAt(3, 2)
+	assert.Equal(t, []int{0, 0, 0, 2}, s)
+}
+
 func TestNilModel(t *testing.T) {
 	type foo struct {
 		Field1 string
 	}
 	var ar [5]*foo
 
-	m := observable.NewModel(&ar)
+	m := controllers.New(&ar)
 	require.NotNil(t, m)
 	defer m.Release()
 
 	v := m.Value("0")
-	assert.NotNil(t, v)
+	require.NotNil(t, v)
 	s := v.(observable.Source)
 	assert.Equal(t, []string{"Field1"}, s.Keys())
 }
 
-func TestObserveKeyPath(t *testing.T) {
-	type bar struct {
-		Field string
-	}
-	type foo struct {
-		Bars [1]*bar
-	}
-
-	f := &foo{}
-	m := observable.NewModel(f)
+func TestNilMap(t *testing.T) {
+	var p map[string]map[string]int
+	m := controllers.New(&p)
 	require.NotNil(t, m)
 	defer m.Release()
 
-	om := make(map[string]map[string]map[string]string)
-	o := observable.NewModel(om)
-	require.NotNil(t, o)
-	defer o.Release()
+	v := m.Value("foo").(observable.MutableSource)
+	require.NotNil(t, v)
+	v.SetValue("bar", 5)
 
-	m.AddObserver("Bars.0.Field", o)
-	defer m.RemoveObserver("", o)
+	assert.Equal(t, 5, p["foo"]["bar"])
+}
 
-	m.SetValue("Bars.0", &bar{Field: "contents"})
-	assert.Equal(t, "contents", om["Bars"]["0"]["Field"])
+func TestSetWithController(t *testing.T) {
+	type bar struct {
+		Field1 string
+	}
+	type foo struct {
+		Bars []*bar
+	}
+	f1 := &foo{
+		Bars: []*bar{
+			{
+				Field1: "value",
+			},
+		},
+	}
+	f2 := &foo{}
+
+	m1 := controllers.New(f1)
+	m2 := controllers.New(f2)
+
+	m2.SetValue("Bars", m1.Value("Bars"))
+
+	assert.Equal(t, f1.Bars[0].Field1, f2.Bars[0].Field1)
 }

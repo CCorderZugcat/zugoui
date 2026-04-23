@@ -14,6 +14,7 @@ import (
 	"github.com/CCorderZugcat/zugoui/input"
 	"github.com/CCorderZugcat/zugoui/jsglue"
 	"github.com/CCorderZugcat/zugoui/observable"
+	"github.com/CCorderZugcat/zugoui/observable/controllers"
 	"github.com/CCorderZugcat/zugoui/wsrpc"
 	"github.com/CCorderZugcat/zugoui/wsrpc/rpctypes"
 )
@@ -32,9 +33,10 @@ type Browser struct {
 }
 
 type valueBindings struct {
-	source, up observable.MutableSource
-	bindings   *input.ValueBindings
-	formID     string
+	source   observable.MutableSource
+	up       *observable.PathObserver
+	bindings *input.ValueBindings
+	formID   string
 }
 
 func (vb *valueBindings) Release() {
@@ -43,12 +45,10 @@ func (vb *valueBindings) Release() {
 	vb.bindings.Release()
 }
 
-func (vb *valueBindings) Rebind() any {
-	vbcopy := *vb
-	if err := vbcopy.bindings.Rebind(); err != nil {
+func (vb *valueBindings) Rebind() {
+	if err := vb.bindings.Rebind(); err != nil {
 		fmt.Fprintf(os.Stderr, "rebind: %v\n", err)
 	}
-	return &vbcopy
 }
 
 var nextID atomic.Int64
@@ -106,10 +106,10 @@ func (b *Browser) NewValueBinding(req *rpctypes.NewValueBindingReq, res *rpctype
 
 	// create client side data source
 	model.Set(reflect.ValueOf(req.Model))
-	source := observable.NewModelValue(model)
+	source := controllers.NewValue(model)
 
 	// this observer sends user changes from browser to the server
-	up := observable.NewWriter(source)
+	up := observable.NewPathObserver("*", source)
 	observer := Observer{b.server, req.Action}
 	up.AddObserver("", observer)
 
@@ -155,8 +155,8 @@ func (b *Browser) storeBindings(handle int64, bindings any) {
 func (b *Browser) Rebind() {
 	b.formIDs.Clear()
 	b.handles.Range(func(key, value any) bool {
-		if rb, ok := value.(interface{ Rebind() any }); ok {
-			b.storeBindings(key.(int64), rb.Rebind())
+		if rb, ok := value.(interface{ Rebind() }); ok {
+			rb.Rebind()
 		}
 
 		return true
@@ -241,36 +241,26 @@ func (b *Browser) SetValue(req *rpctypes.SetValueReq, _ *bool) error {
 }
 
 func (b *Browser) InsertValueAt(req *rpctypes.InsertValueAtReq, _ *bool) error {
-	return b.eachBindingFor(
-		req.Handle,
-		func(b observable.Observer) { b.InsertValueAt(req.At, req.Value) },
-	)
+	// unsupported
+	return nil
 }
 
 func (b *Browser) RemoveValueAt(req *rpctypes.RemoveValueAtReq, _ *bool) error {
-	return b.eachBindingFor(
-		req.Handle,
-		func(b observable.Observer) { b.RemoveValueAt(req.At) },
-	)
+	// unsupported
+	return nil
 }
 
 func (b *Browser) SetValueAt(req *rpctypes.SetValueAtReq, _ *bool) error {
-	return b.eachBindingFor(
-		req.Handle,
-		func(b observable.Observer) { b.SetValueAt(req.At, req.Value) },
-	)
+	// unsupported
+	return nil
 }
 
 func (b *Browser) SetValueFor(req *rpctypes.SetValueForReq, _ *bool) error {
-	return b.eachBindingFor(
-		req.Handle,
-		func(b observable.Observer) { b.SetValueFor(req.Key, req.Value) },
-	)
+	// unsupported
+	return nil
 }
 
 func (b *Browser) RemoveValueFor(req *rpctypes.RemoveValueForReq, _ *bool) error {
-	return b.eachBindingFor(
-		req.Handle,
-		func(b observable.Observer) { b.RemoveValueFor(req.Key) },
-	)
+	// unsupported
+	return nil
 }

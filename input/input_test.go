@@ -11,7 +11,7 @@ import (
 	"github.com/CCorderZugcat/zugoui/formtest"
 	"github.com/CCorderZugcat/zugoui/input"
 	"github.com/CCorderZugcat/zugoui/jsglue"
-	"github.com/CCorderZugcat/zugoui/observable"
+	"github.com/CCorderZugcat/zugoui/observable/controllers"
 )
 
 func TestInput(t *testing.T) {
@@ -26,7 +26,7 @@ func TestInput(t *testing.T) {
 	assert.Equal(t, "bread", i.Value("value"))
 
 	changes := make(map[string]any)
-	m := observable.NewModel(changes)
+	m := controllers.New(changes)
 	require.NotNil(t, m)
 	defer m.Release()
 

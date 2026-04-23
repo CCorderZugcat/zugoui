@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"os"
 
 	"github.com/CCorderZugcat/zugoui/browser"
@@ -17,7 +18,7 @@ func main() {
 	flag.Parse()
 
 	err := browser.Main(ctx, flag.Arg(0)) // if empty, defaults to "rpc"
-	os.Stdout.Write([]byte("debug: exiting\n"))
+	fmt.Println("debug: exiting")
 
 	if err != nil {
 		os.Exit(1)

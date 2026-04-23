@@ -2,16 +2,11 @@
 package controller
 
 import (
-	"errors"
-	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/CCorderZugcat/zugoui/observable"
 	"github.com/CCorderZugcat/zugoui/wsrpc"
-)
-
-var (
-	ErrBadPair = errors.New("bad pair")
 )
 
 // Controller handles the interaction of observable bindings between the model and the browser.
@@ -19,9 +14,10 @@ var (
 type Controller struct {
 	Browser wsrpc.Browser
 
+	lck      sync.RWMutex
 	server   *wsrpc.Server
 	bindings map[string]*binding
-	actions  map[string][]int64
+	actions  map[string]*actionBinding
 	prefix   string // namespace with trailing dot
 }
 
@@ -31,15 +27,47 @@ type binding struct {
 	observing observable.Observable
 }
 
+type actionBinding struct {
+	handle int64
+	target func(string)
+}
+
 // New creates a new Controller instance given the web server's RPC service and a connection to the browser.
 // namespace specifies the browser's binding namespace to use with this Controller's instance.
 func New(server *wsrpc.Server, browser wsrpc.Browser, namespace string) *Controller {
-	return &Controller{
+	c := &Controller{
 		server:   server,
 		Browser:  browser,
 		bindings: make(map[string]*binding),
-		actions:  make(map[string][]int64),
+		actions:  make(map[string]*actionBinding),
 		prefix:   namespace + ".",
+	}
+	c.server.AddActionObserver(observable.NewActionObserver(func(_ string, value any) {
+		name, ok := value.(string)
+		if !ok {
+			return
+		}
+		c.action(name)
+	}))
+
+	return c
+}
+
+func (c *Controller) action(action string) {
+	name, ok := strings.CutPrefix(action, c.prefix)
+	if !ok {
+		name, ok = strings.CutPrefix(action, "global.")
+	}
+	if !ok {
+		return
+	}
+
+	c.lck.RLock()
+	b, ok := c.actions[name]
+	c.lck.RUnlock()
+
+	if ok {
+		b.target(name)
 	}
 }
 
@@ -56,47 +84,30 @@ func (c *Controller) Release() {
 
 	c.server.ReleaseActionObservers()
 	for _, v := range c.actions {
-		for _, h := range v {
-			c.Browser.Unbind(h)
-		}
+		c.Browser.Unbind(v.handle)
 	}
 	clear(c.actions)
 }
 
-// HandleActions sets the callback for actions
-func (c *Controller) HandleActions(handler func(action string)) {
-	c.server.AddActionObserver(observable.NewActionObserver(func(_ string, value any) {
-		fullName, _ := value.(string)
+func (c *Controller) BindAction(element, action string, target func(string)) (err error) {
+	c.lck.Lock()
+	defer c.lck.Unlock()
 
-		if name, ok := strings.CutPrefix(fullName, c.prefix); ok {
-			handler(name)
-		} else if name, ok := strings.CutPrefix(fullName, "global."); ok {
-			handler(name)
-		}
-	}))
-}
+	b, ok := c.actions[action]
+	if !ok {
+		b = &actionBinding{}
+	} else {
+		c.Browser.Unbind(b.handle)
+		delete(c.actions, action)
+	}
 
-// BindAction creates an action binding. Call HandleActions first.
-func (c *Controller) BindAction(element, action string) error {
-	handle, err := c.Browser.NewClickBinding(element, c.prefix+action)
+	b.handle, err = c.Browser.NewClickBinding(element, c.prefix+action)
 	if err != nil {
 		return err
 	}
+	b.target = target
 
-	c.actions[action] = append(c.actions[action], handle)
-	return nil
-}
-
-// BindActions calls BindAction with multiple pairs of element,action as a convenience
-func (c *Controller) BindActions(pairs ...string) error {
-	for i := 0; i < len(pairs); i += 2 {
-		if (i + 1) == len(pairs) {
-			return fmt.Errorf("%w: variadic in groups of element, action pairs", ErrBadPair)
-		}
-		if err := c.BindAction(pairs[i], pairs[i+1]); err != nil {
-			return err
-		}
-	}
+	c.actions[action] = b
 	return nil
 }
 
@@ -107,15 +118,14 @@ func (c *Controller) BindValues(
 	elements []string,
 	source observable.Source,
 ) error {
+	c.lck.Lock()
+	defer c.lck.Unlock()
+
 	action := c.prefix + name
+	o := observable.NewPathObserver("*", source)
 
-	if m, ok := source.(observable.MutableSource); ok {
-		// NewWriter keeps the observers above us
-		m = observable.NewWriter(m)
-		c.server.AddValueObserver(action, m)
-
-		// keep browswer updates from going back to the browser
-		source = m
+	if _, mutable := source.(observable.MutableSource); mutable {
+		c.server.AddValueObserver(action, o)
 	}
 
 	handle, err := c.Browser.NewValueBinding(
@@ -140,7 +150,6 @@ func (c *Controller) BindValues(
 		c.bindings[action] = b
 	}
 
-	source.AddObserver("", wsrpc.Observer{Browser: c.Browser, Handle: handle})
-
+	o.AddObserver("", wsrpc.Observer{Browser: c.Browser, Handle: handle})
 	return nil
 }

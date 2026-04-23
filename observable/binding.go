@@ -9,99 +9,60 @@ var (
 	ErrUnknownTransformer = errors.New("unknown transformer")
 )
 
-// Binding is a (potentially two way) binding between two Observables,
-// where at least one is a MutableSource
+// Binding is a potentially two way binding between two key paths.
+// If the source is also mutable, the binding will be created full duplex.
+// A transformer may optionally be specified.
 type Binding struct {
-	sourceBinding *observeAs
-	destBinding   *observeAs
-	x             Transformer
-	source, dest  MutableSource
+	sbind, dbind *binding
+	source, dest *PathObserver
 }
 
-// observeAs is our fundamental mini-binding from
-// sourceKeyPath in source to destKeyPath in dest.
-type observeAs struct {
-	NullObserver
-	destKeyPath   string
-	dest          MutableSource
-	sourceKeyPath string
-	source        Source
-}
-
-func newObserveAs(
-	destKeyPath string,
-	dest MutableSource,
-	sourceKeyPath string,
-	source Source,
-) *observeAs {
-	o := &observeAs{
-		destKeyPath:   destKeyPath,
-		dest:          dest,
-		sourceKeyPath: sourceKeyPath,
-		source:        source,
-	}
-	o.source.AddObserver(o.sourceKeyPath, o)
-
-	return o
-}
-
-func (o *observeAs) Release() {
-	o.source.RemoveObserver(o.sourceKeyPath, o)
-}
-
-func (o *observeAs) SetValue(key string, value any) {
-	o.dest.SetValue(o.destKeyPath, value)
-}
-
-// NewBinding creates a new Binding
+// NewBinding creates a new Binding.
+// If no transformer is desired, xformName is an empty string.
 func NewBinding(
-	destKeyPath string,
-	dest MutableSource,
-	sourceKeyPath string,
+	sourcePath string,
 	source Source,
+	destPath string,
+	dest MutableSource,
 	xformName string,
 ) (*Binding, error) {
-	_, mutableSource := source.(MutableSource)
-	b := &Binding{
-		dest: NewWriter(dest),
-	}
+	b := &Binding{}
+
+	_, mutable := source.(MutableSource)
+	var get, set func(any) any
 
 	if xformName != "" {
-		if b.x = NewTransformer(xformName, sourceKeyPath, source); b.x == nil {
+		xform := NewTransformer(xformName)
+		if xform == nil {
 			return nil, fmt.Errorf("%w: %s", ErrUnknownTransformer, xformName)
 		}
+		get = xform.Get
 
-		b.sourceBinding = newObserveAs(destKeyPath, b.dest, "value", b.x)
-		b.dest.SetValue(destKeyPath, b.x.Value("value"))
-
-		mutableSource = mutableSource && b.x.Mutable()
-		if mutableSource {
-			b.destBinding = newObserveAs("value", b.x, destKeyPath, b.dest)
+		mutable = mutable && xform.Mutable()
+		if mutable {
+			set = xform.Set
 		}
-	} else {
-		dest.SetValue(destKeyPath, source.Value(sourceKeyPath))
+	}
 
-		if mutableSource {
-			b.source = NewWriter(source.(MutableSource))
-			b.sourceBinding = newObserveAs(destKeyPath, b.dest, sourceKeyPath, b.source)
-			b.destBinding = newObserveAs(sourceKeyPath, b.source, destKeyPath, b.dest)
-		} else {
-			b.sourceBinding = newObserveAs(destKeyPath, b.dest, sourceKeyPath, source)
-		}
+	b.source = NewPathObserver(sourcePath, source)
+	b.dest = NewPathObserver(destPath, dest)
+
+	b.sbind = newBinding(sourcePath, b.source, destPath, b.dest, get, true)
+
+	if mutable {
+		b.dbind = newBinding(destPath, b.dest, sourcePath, b.source, set, false)
 	}
 
 	return b, nil
 }
 
+// Release releases all resources associated with a Binding
 func (b *Binding) Release() {
-	if b.x != nil {
-		b.x.Release()
+	if b.sbind != nil {
+		b.sbind.Release()
 	}
-	if b.sourceBinding != nil {
-		b.sourceBinding.Release()
-	}
-	if b.destBinding != nil {
-		b.destBinding.Release()
+	if b.dbind != nil {
+		b.dbind.Release()
 	}
 	if b.source != nil {
 		b.source.Release()
@@ -109,4 +70,51 @@ func (b *Binding) Release() {
 	if b.dest != nil {
 		b.dest.Release()
 	}
+}
+
+// binding is a half duplex fundamental direction used in an overall Binding object
+type binding struct {
+	NullObserver
+	sourcePath string
+	source     *PathObserver
+	destPath   string
+	dest       *PathObserver
+	xform      func(any) any
+}
+
+func newBinding(
+	sourcePath string,
+	source *PathObserver,
+	destPath string,
+	dest *PathObserver,
+	xform func(any) any,
+	init bool,
+) *binding {
+	if xform == nil {
+		xform = func(x any) any { return x }
+	}
+
+	b := &binding{
+		sourcePath: sourcePath,
+		source:     source,
+		destPath:   destPath,
+		dest:       dest,
+		xform:      xform,
+	}
+
+	source.AddObserver(sourcePath, b)
+
+	if init {
+		dest.SetValue(destPath, xform(source.Value(sourcePath)))
+	}
+
+	return b
+}
+
+func (b *binding) Release() {
+	b.source.RemoveObserver(b.sourcePath, b)
+}
+
+func (b *binding) SetValue(key string, value any) {
+	b.dest.SetValue(b.destPath, b.xform(value))
 }

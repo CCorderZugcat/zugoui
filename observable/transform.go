@@ -1,13 +1,14 @@
 package observable
 
-import "reflect"
+import (
+	"reflect"
+)
 
 type Transformer interface {
-	NewTransformer(key string, source Source) Transformer
+	NewTransformer() Transformer
 	Mutable() bool
-	Release()
-	MutableSource
-	Observable
+	Get(any) any
+	Set(any) any
 }
 
 var transformers = make(map[string]Transformer)
@@ -18,12 +19,12 @@ func RegisterTransformer(name string, x Transformer) {
 }
 
 // NewTransformer returns a new transformber by registered name
-func NewTransformer(name string, key string, source Source) Transformer {
+func NewTransformer(name string) Transformer {
 	x, ok := transformers[name]
 	if !ok {
 		return nil
 	}
-	return x.NewTransformer(key, source)
+	return x.NewTransformer()
 }
 
 func init() {
@@ -32,88 +33,38 @@ func init() {
 	RegisterTransformer("len", &length{})
 }
 
-type transformObserver struct {
-	*Observe
-	xform *BaseTransform
-}
-
-func newTransformObserver(xform *BaseTransform) *transformObserver {
-	return &transformObserver{
-		Observe: New(),
-		xform:   xform,
-	}
-}
-
-func (o *transformObserver) SetValue(key string, value any) {
-	if key != o.xform.key {
-		return
-	}
-	o.Observe.SetValue("value", o.xform.valueFrom(value))
-}
-
 // BaseTransform gives base level functionality
 type BaseTransform struct {
-	NullSource
-	NullObserver
-	o         *transformObserver
-	key       string
-	source    Source
 	valueFrom func(any) any
 	valueTo   func(any) any
 }
 
 func NewBaseTransform(
-	key string, source Source,
 	valueFrom, valueTo func(any) any,
 ) *BaseTransform {
 	b := &BaseTransform{
-		key:       key,
-		source:    source,
 		valueFrom: valueFrom,
 		valueTo:   valueTo,
 	}
-	b.o = newTransformObserver(b)
-	source.AddObserver(key, b.o)
 	return b
 }
 
-func (b *BaseTransform) Release() {
-	b.source.RemoveObserver(b.key, b.o)
-}
-
-func (b *BaseTransform) Updating() func() {
-	return b.o.Updating()
-}
-
-func (b *BaseTransform) AddObserver(key string, observer Observer) {
-	b.o.AddObserver(key, observer)
-}
-
-func (b *BaseTransform) RemoveObserver(key string, observer Observer) {
-	b.o.RemoveObserver(key, observer)
-}
-
-func (b *BaseTransform) Value(key string) any {
-	if key != "value" || b.valueFrom == nil {
+func (b *BaseTransform) Get(value any) any {
+	if b.valueFrom == nil {
 		return nil
 	}
-	return b.valueFrom(b.source.Value(b.key))
+	return b.valueFrom(value)
 }
 
 func (b *BaseTransform) Mutable() bool {
 	return b.valueTo != nil
 }
 
-func (b *BaseTransform) SetValue(key string, value any) {
-	if key != b.key || b.valueTo == nil {
-		return
+func (b *BaseTransform) Set(value any) any {
+	if b.valueTo == nil {
+		return nil
 	}
-
-	value = b.valueTo(value)
-
-	// let this panic if not Mutable; valueTo shouldn't be set in that case
-	b.source.(MutableSource).SetValue(b.key, value)
-	b.o.SetValue("value", value)
+	return b.valueTo(value)
 }
 
 // isNil returns true if the value is nil
@@ -121,10 +72,9 @@ type isNil struct {
 	*BaseTransform
 }
 
-func (_ isNil) NewTransformer(key string, source Source) Transformer {
+func (_ isNil) NewTransformer() Transformer {
 	return isNil{
 		BaseTransform: NewBaseTransform(
-			key, source,
 			func(value any) any {
 				if value == nil {
 					return true
@@ -147,10 +97,9 @@ type isZero struct {
 	*BaseTransform
 }
 
-func (_ isZero) NewTransformer(key string, source Source) Transformer {
+func (_ isZero) NewTransformer() Transformer {
 	return isZero{
 		BaseTransform: NewBaseTransform(
-			key, source,
 			func(value any) any {
 				if value == nil {
 					return true
@@ -176,10 +125,9 @@ type length struct {
 	*BaseTransform
 }
 
-func (_ length) NewTransformer(key string, source Source) Transformer {
+func (_ length) NewTransformer() Transformer {
 	return length{
 		BaseTransform: NewBaseTransform(
-			key, source,
 			func(value any) any {
 				if value == nil {
 					return 0
