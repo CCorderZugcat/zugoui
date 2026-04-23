@@ -148,14 +148,19 @@ func (f *form) errors() any {
 // newSubscription returns a subscription to the whole form or a field in it
 func (f *form) newSubscription(id, key string, callback js.Value) *subscription {
 	s := &subscription{form: f, callback: callback, id: id}
-	f.source.AddObserver("", s)
+	if key == "" {
+		key = "*"
+	}
+	s.source = observable.NewPathObserver(key, f.source)
+	s.source.AddObserver("", s)
 	return s
 }
 
 // newErrorSubscription returns a subscription to form errors
 func (f *form) newErrorSubscription(callback js.Value) *errorSubscription {
 	e := &errorSubscription{form: f, callback: callback}
-	f.source.AddObserver("", e)
+	e.source = observable.NewPathObserver("*", f.source)
+	e.source.AddObserver("", e)
 	return e
 }
 
@@ -164,7 +169,7 @@ type subscription struct {
 	form     *form
 	id       string
 	callback js.Value
-	source   observable.Source
+	source   *observable.PathObserver
 }
 
 func (s *subscription) SetValue(key string, value any) {
@@ -172,14 +177,14 @@ func (s *subscription) SetValue(key string, value any) {
 }
 
 func (s *subscription) Release() {
-	s.source.RemoveObserver("", s)
+	s.source.Release()
 }
 
 type errorSubscription struct {
 	observable.NullObserver
 	form     *form
 	callback js.Value
-	source   observable.Source
+	source   *observable.PathObserver
 }
 
 func (e *errorSubscription) SetValue(key string, value any) {
@@ -187,5 +192,5 @@ func (e *errorSubscription) SetValue(key string, value any) {
 }
 
 func (e *errorSubscription) Release() {
-	e.source.RemoveObserver("", e)
+	e.source.Release()
 }

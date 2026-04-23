@@ -3,10 +3,12 @@
 package input
 
 import (
+	"reflect"
 	"slices"
 	"strings"
 
 	"github.com/CCorderZugcat/zugoui/observable"
+	"github.com/CCorderZugcat/zugoui/observable/controllers"
 )
 
 // ValueBindings holds multiple bindings from a single model to fields,
@@ -82,9 +84,17 @@ func (vb *ValueBindings) rebind(idPath, keyPath string, source observable.Source
 			idPath = idPath + "." + key
 		}
 
+		value := source.Value(key)
+
+		// if value is nil but we have an elem, create a stub source.
+		// we are after key paths
+		if value == nil && source.Elem() != nil {
+			value = controllers.NewValue(reflect.New(source.Elem()).Elem())
+		}
+
 		bindings := source.Tag(key, "bind")
 		if len(bindings) == 0 {
-			if source, ok := source.Value(key).(observable.Source); ok {
+			if source, ok := value.(observable.Source); ok {
 				if err := vb.rebind(idPath, keyPath, source); err != nil {
 					return err
 				}
@@ -107,7 +117,7 @@ func (vb *ValueBindings) rebind(idPath, keyPath string, source observable.Source
 			}
 			idPath = strings.TrimSuffix(idPath, ".")
 
-			if source, ok := source.Value(key).(observable.Source); ok {
+			if source, ok := value.(observable.Source); ok {
 				if err := vb.rebind(idPath, keyPath, source); err != nil {
 					return err
 				}
@@ -128,8 +138,8 @@ func (vb *ValueBindings) rebind(idPath, keyPath string, source observable.Source
 			vb.IDPaths[idPath] = keyPath
 
 			binding, err := observable.NewBinding(
-				property, input,
 				keyPath, vb.source,
+				property, input,
 				xform,
 			)
 			if err != nil {

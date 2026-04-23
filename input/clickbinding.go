@@ -39,14 +39,12 @@ func (c *ClickBinding) bind() {
 
 // Rebind follows the Rebind interface allowing this binding to
 // hook back up to a dynamically rendered document or reconnection.
-func (c *ClickBinding) Rebind() any {
+func (c *ClickBinding) Rebind() {
 	if c.elem.Type() == js.TypeObject {
 		c.elem.Call("removeEventListener", "click", c.listener)
 	}
 
-	cc := *c
-	cc.bind()
-	return &cc
+	c.bind()
 }
 
 // Release releases this binding.

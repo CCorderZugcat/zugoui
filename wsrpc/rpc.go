@@ -78,45 +78,36 @@ func (s *Server) SetValue(req *rpctypes.SetValueReq, _ *bool) error {
 	if o := s.observerAt(req.Action); o != nil {
 		o.SetValue(req.Key, req.Value)
 	}
+
 	return nil
 }
 
 // SetValueAt
 func (s *Server) SetValueAt(req *rpctypes.SetValueAtReq, _ *bool) error {
-	if o := s.observerAt(req.Action); o != nil {
-		o.SetValueAt(req.At, req.Value)
-	}
+	// unsupported
 	return nil
 }
 
 // InsertValueAt
 func (s *Server) InsertValueAt(req *rpctypes.InsertValueAtReq, _ *bool) error {
-	if o := s.observerAt(req.Action); o != nil {
-		o.InsertValueAt(req.At, req.Value)
-	}
+	// unsupported
 	return nil
 }
 
 // RemoveValueAt
 func (s *Server) RemoveValueAt(req *rpctypes.RemoveValueAtReq, _ *bool) error {
-	if o := s.observerAt(req.Action); o != nil {
-		o.RemoveValueAt(req.At)
-	}
+	// unsupported
 	return nil
 }
 
 // SetValueFor
 func (s *Server) SetValueFor(req *rpctypes.SetValueForReq, _ *bool) error {
-	if o := s.observerAt(req.Action); o != nil {
-		o.SetValueFor(req.Key, req.Value)
-	}
+	// unsupported
 	return nil
 }
 
 // RemoveValueFor
 func (s *Server) RemoveValueFor(req *rpctypes.RemoveValueForReq, _ *bool) error {
-	if o := s.observerAt(req.Action); o != nil {
-		o.RemoveValueFor(req.Key)
-	}
+	// unsupported
 	return nil
 }

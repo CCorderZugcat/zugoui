@@ -3,6 +3,7 @@ package wsrpc
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/rpc"
 
 	"github.com/CCorderZugcat/zugoui/jstypes"
@@ -97,7 +98,7 @@ func (b Browser) Unbind(handle int64) error {
 
 // SetValue stub for function [jsrpc.Browser.SetValue]
 func (o Observer) SetValue(key string, value any) {
-	o.Browser.Call(
+	if err := o.Browser.Call(
 		"Browser.SetValue",
 		&rpctypes.SetValueReq{
 			Handle: o.Handle,
@@ -105,68 +106,32 @@ func (o Observer) SetValue(key string, value any) {
 			Value:  value,
 		},
 		nil,
-	)
+	); err != nil {
+		slog.Error(fmt.Sprintf("rpc SetValue: %v\n", err))
+	}
 }
 
 // InsertValueAt stub for function [jsrpc.Browser.InsertValueAt]
 func (o Observer) InsertValueAt(at int, value any) {
-	o.Browser.Call(
-		"Browser.InsertValueAt",
-		&rpctypes.SetValueAtReq{
-			Handle: o.Handle,
-			At:     at,
-			Value:  value,
-		},
-		nil,
-	)
+	// unsupported
 }
 
 // RemoveValueAt stub for function [jsrpc.Browser.RemoveValueAt]
 func (o Observer) RemoveValueAt(at int) {
-	o.Browser.Call(
-		"Browser.RemoveValueAt",
-		&rpctypes.RemoveValueAtReq{
-			Handle: o.Handle,
-			At:     at,
-		},
-		nil,
-	)
+	// unsupported
 }
 
 // SetValueAt stub for function [jsrpc.Browser.SetValueAt]
 func (o Observer) SetValueAt(at int, value any) {
-	o.Browser.Call(
-		"Browser.SetValueAt",
-		&rpctypes.SetValueAtReq{
-			Handle: o.Handle,
-			At:     at,
-			Value:  value,
-		},
-		nil,
-	)
+	// unsupported
 }
 
 // SetValueForm stub for function [jsrpc.Browser.SetValueFor]
 func (o Observer) SetValueFor(key string, value any) {
-	o.Browser.Call(
-		"Browser.SetValueFor",
-		&rpctypes.SetValueForReq{
-			Handle: o.Handle,
-			Key:    key,
-			Value:  value,
-		},
-		nil,
-	)
+	// unsupported
 }
 
 // RemoveValueFor stub for function [jsrpc.Browser.RemoveValueFor]
 func (o Observer) RemoveValueFor(key string) {
-	o.Browser.Call(
-		"Browser.RemoveValueFor",
-		&rpctypes.RemoveValueForReq{
-			Handle: o.Handle,
-			Key:    key,
-		},
-		nil,
-	)
+	// unsupported
 }

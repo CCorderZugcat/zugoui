@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/CCorderZugcat/zugoui/observable"
+	"github.com/CCorderZugcat/zugoui/observable/controllers"
 )
 
 type myModel struct {
@@ -58,7 +59,7 @@ func TestValidate(t *testing.T) {
 		Submodel: &submodel{},
 	}
 
-	s := observable.NewModel(m)
+	s := controllers.New(m)
 	err := observable.ValidateSource(s)
 	require.Error(t, err)
 	t.Logf("%v (expected)", err)

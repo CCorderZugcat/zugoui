@@ -1,6 +1,10 @@
 package model
 
-import "encoding/gob"
+import (
+	"encoding/gob"
+
+	_ "github.com/CCorderZugcat/zugoui/observable/controllers/scroll"
+)
 
 type Topping struct {
 	Topping string `bind:"topping"`
@@ -8,8 +12,8 @@ type Topping struct {
 }
 
 type Pizza struct {
-	Size     string      `bind:"size"`
-	Toppings [3]*Topping `bind:"toppings"`
+	Size     string     `bind:"size"`
+	Toppings []*Topping `bind:"toppings" controller:"scroll,3"`
 }
 
 type Buttons struct {

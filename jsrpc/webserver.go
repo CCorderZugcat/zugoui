@@ -45,63 +45,25 @@ func (o Observer) SetValue(key string, value any) {
 
 // InsertValueAt stub for function [wsrpc.Server.InsertValueAt]
 func (o Observer) InsertValueAt(at int, value any) {
-	go o.Call(
-		"Server.InsertValueAt",
-		&rpctypes.InsertValueAtReq{
-			Action: o.Action,
-			At:     at,
-			Value:  value,
-		},
-		nil,
-	)
+	// unsupported
 }
 
 // RemoveValueAt stub for function [wsrpc.Server.RemoveValueAt]
 func (o Observer) RemoveValueAt(at int) {
-	go o.Call(
-		"Server.RemoveValueAt",
-		&rpctypes.RemoveValueAtReq{
-			Action: o.Action,
-			At:     at,
-		},
-		nil,
-	)
+	// unsupported
 }
 
 // SetValueAt stub for function [wsrpc.Server.SetValueAt]
 func (o Observer) SetValueAt(at int, value any) {
-	go o.Call(
-		"Server.SetValueAt",
-		&rpctypes.SetValueAtReq{
-			Action: o.Action,
-			At:     at,
-			Value:  value,
-		},
-		nil,
-	)
+	// unsupported
 }
 
 // SetValueFor stub for function [wsrpc.Server.SetValueFor]
 func (o Observer) SetValueFor(key string, value any) {
-	go o.Call(
-		"Server.SetValueFor",
-		&rpctypes.SetValueForReq{
-			Action: o.Action,
-			Key:    key,
-			Value:  value,
-		},
-		nil,
-	)
+	// unsupported
 }
 
 // RemoveValueFor stub for function [wsrpc.Server.RemoveValueFor]
 func (o Observer) RemoveValueFor(key string) {
-	go o.Call(
-		"Server.RemoveValueFor",
-		&rpctypes.RemoveValueForReq{
-			Action: o.Action,
-			Key:    key,
-		},
-		nil,
-	)
+	// unsupported
 }

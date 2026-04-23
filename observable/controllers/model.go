@@ -1,36 +1,51 @@
-package observable
+package controllers
 
 import (
+	"fmt"
 	"reflect"
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/CCorderZugcat/zugoui/observable"
 )
 
-// Model allows runtime setting, getting, and observing of an arbitrary model
+var controllers = make(map[string]func(observable.Source, []string) observable.Source)
+
+// RegisterController is called during initialization from a package providing a controller
+func RegisterController(name string, ctor func(observable.Source, []string) observable.Source) {
+	controllers[name] = ctor
+}
+
+// Model allows runtime setting, getting, and observing of an arbitrary model.
+// This is the default and root level controller for any object.
 type Model struct {
-	model reflect.Value
-	elem  reflect.Type
-	keys  sync.Map
-	*Observe
+	model   reflect.Value
+	elem    reflect.Type
+	keys    sync.Map
+	sources sync.Map
+	*observable.Observe
 }
 
-var _ MutableSource = ((*Model)(nil))
+var _ observable.MutableSource = &Model{}
 
-// NewModel creates a new observeable Model instance.
-func NewModel(model any) *Model {
-	return NewModelValue(reflect.ValueOf(model))
+// New creates a new observeable Model instance.
+func New(model any) *Model {
+	if m, ok := model.(*Model); ok {
+		return m
+	}
+	return NewValue(reflect.ValueOf(model))
 }
 
-// NewModel creates a new observeable for a model.
-// v should be a value pointer to see results of mutations,
+// NewValue is like NewModel but with a Value
+// v should be a  pointer to see results of mutations,
 // but if it is not, then an internal copy is used.
-func NewModelValue(v reflect.Value) *Model {
+func NewValue(v reflect.Value) *Model {
 	o := &Model{
-		Observe: New(),
+		Observe: observable.New(),
 	}
 
-	v = MutableValue(v)
+	v = observable.MutableValue(v)
 	if !v.IsValid() {
 		return nil
 	}
@@ -45,14 +60,20 @@ func NewModelValue(v reflect.Value) *Model {
 	return o
 }
 
-func (m *Model) key(name string, set bool) reflect.Value {
-	if !set {
-		if v, ok := m.keys.Load(name); ok {
-			return v.(reflect.Value)
-		}
+func (m *Model) key(name string) (value reflect.Value) {
+	if v, ok := m.keys.Load(name); ok {
+		return v.(reflect.Value)
 	}
 
-	var value reflect.Value
+	cache := true
+	defer func() {
+		if cache && value.IsValid() {
+			if v, ok := m.keys.LoadOrStore(name, value); ok {
+				// let the earlier store win the race
+				value = v.(reflect.Value)
+			}
+		}
+	}()
 
 	switch m.model.Kind() {
 	case reflect.Map:
@@ -61,40 +82,34 @@ func (m *Model) key(name string, set bool) reflect.Value {
 			m.model.Set(reflect.MakeMap(m.model.Type()))
 		}
 		value = m.model.MapIndex(key)
+		// use ValueFor if existence check is needed
 		if !value.IsValid() {
-			if !set {
-				return value
+			if m.model.Type().Elem().Kind() == reflect.Map {
+				value = reflect.MakeMap(m.model.Type().Elem())
+			} else {
+				value = reflect.New(m.model.Type().Elem()).Elem()
 			}
-			value = reflect.New(m.model.Type().Elem()).Elem()
 			m.model.SetMapIndex(key, value)
-		}
-		if !set {
-			value = m.modelKey(name, value)
 		}
 
 	case reflect.Struct:
 		value = m.model.FieldByName(name)
-		if !set {
-			value = m.modelKey(name, value)
-		}
 
 	case reflect.Slice, reflect.Array:
 		switch name {
 		case "len":
 			value = reflect.ValueOf(m.model.Len())
+			cache = false
 
 		case "cap":
 			value = reflect.ValueOf(m.model.Cap())
+			cache = false
 
 		default:
 			index, err := strconv.Atoi(name)
 			if err == nil && index >= 0 && index < m.model.Len() {
 				value = m.model.Index(index)
 			}
-		}
-
-		if !set && value.IsValid() {
-			value = m.modelKey(name, value)
 		}
 
 	default:
@@ -105,44 +120,6 @@ func (m *Model) key(name string, set bool) reflect.Value {
 	}
 
 	return value
-}
-
-func (m *Model) modelKey(name string, value reflect.Value) (ret reflect.Value) {
-	defer func() {
-		if v, loaded := m.keys.LoadOrStore(name, ret); loaded {
-			ret = v.(reflect.Value) // let first one win if raced
-		}
-	}()
-
-	var t reflect.Type
-	if !value.IsValid() {
-		t = m.elem
-	} else {
-		t = value.Type()
-	}
-	if t == nil {
-		return value
-	}
-
-	if t.Implements(reflect.TypeFor[MutableSource]()) {
-		return value
-	}
-
-	for t.Kind() == reflect.Pointer {
-		t = t.Elem()
-	}
-
-	switch t.Kind() {
-	case reflect.Slice, reflect.Array, reflect.Map, reflect.Struct:
-	default:
-		return value
-	}
-
-	s := NewModelValue(value)
-	if s == nil {
-		return value
-	}
-	return reflect.ValueOf(s)
 }
 
 // Interface returns the Model's underlying object.
@@ -200,13 +177,18 @@ func (m *Model) ValueAt(index int) any {
 	return m.model.Index(index).Interface()
 }
 
-// ValueFor returns a key's value of a map
+// ValueFor returns a key's value of a map.
+// If the underlying object is a struct, a non-controller value is returned.
 func (m *Model) ValueFor(key string) any {
+	var value reflect.Value
 	if m.model.Kind() != reflect.Map {
-		return nil
+		value = m.ModelFor(key)
+	} else {
+		// do not act like Value, which will create the key if unset.
+		// ValueFor returns nil in this case.
+		value = m.model.MapIndex(reflect.ValueOf(key).Convert(m.model.Type().Key()))
 	}
-	value := m.model.MapIndex(reflect.ValueOf(key).Convert(m.model.Type().Key()))
-	if !value.IsValid() {
+	if !(value.IsValid() && value.CanInterface()) {
 		return nil
 	}
 	return value.Interface()
@@ -236,81 +218,79 @@ func (m *Model) Model() reflect.Value {
 
 // ModelFor returns an introspection value for a key
 func (m *Model) ModelFor(key string) reflect.Value {
-	return m.key(key, false)
+	return m.key(key)
 }
 
 // Value returns the value for a key path
-func (m *Model) Value(keyPath string) any {
-	s := Source(m)
-	var v reflect.Value
+func (m *Model) Value(key string) any {
+	if s, ok := m.sources.Load(key); ok {
+		return s
+	}
 
-	for key := range strings.SplitSeq(keyPath, ".") {
-		if s == nil {
-			return nil
+	v := m.ModelFor(key)
+	if !(v.IsValid() && v.CanInterface()) {
+		return nil
+	}
+
+	for v.Kind() == reflect.Interface {
+		if !v.IsNil() {
+			v = v.Elem()
 		}
-		v = s.ModelFor(key)
-		if !v.IsValid() || !v.CanInterface() {
-			return nil
+	}
+
+	if tag := m.Tag(key, "controller"); len(tag) > 0 {
+		if ctor, ok := controllers[tag[0]]; ok {
+			s, ok := v.Interface().(observable.Source)
+			if !ok {
+				s = NewValue(v)
+			}
+
+			mm := ctor(s, tag[1:])
+			if s, ok := m.sources.LoadOrStore(key, mm); ok {
+				mm.Release()
+				return s
+			}
+
+			return mm
 		}
-		if v.Type().Implements(reflect.TypeFor[Source]()) {
-			s = v.Interface().(Source)
-		} else {
-			s = nil
+
+		panic(fmt.Sprintf("unregistered controller %s", tag[0]))
+	}
+
+	t := v.Type()
+	for t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+	switch t.Kind() {
+	case reflect.Array, reflect.Slice, reflect.Map, reflect.Struct:
+		if mm := NewValue(v); mm != nil {
+			if s, ok := m.sources.LoadOrStore(key, mm); ok {
+				mm.Release()
+				return s
+			}
+			return mm
 		}
 	}
 
 	return v.Interface()
 }
 
-// SetValue sets a value for a key path
-func (m *Model) SetValue(keyPath string, value any) {
-	defer func() {
-		// if we've added a new datasource, inform observers
-		if s, ok := m.Value(keyPath).(Source); ok {
-			for _, key := range s.Keys() {
-				v := s.Value(key)
-				if v == nil {
-					continue
-				}
-				if vs, ok := v.(Source); ok {
-					v = vs.Model().Interface()
-				}
-				m.SetValue(keyPath+"."+key, v)
-			}
-		}
-	}()
-
-	components := strings.Split(keyPath, ".")
-
-	if len(components) == 1 {
-		m.setValue(keyPath, value)
-		return
+func (m *Model) SetValue(key string, value any) {
+	if s, ok := m.sources.LoadAndDelete(key); ok {
+		s.(observable.Observable).Release()
 	}
 
-	m.Observe.SetValue(keyPath, value)
+	var valueValue reflect.Value
+	switch value := value.(type) {
+	case reflect.Value:
+		valueValue = value
 
-	v := m.Value(components[0])
-	if v == nil {
-		if elem := m.Elem(); elem != nil {
-			if elem.Kind() == reflect.Map {
-				v = reflect.MakeMap(elem).Interface()
-			} else {
-				v = reflect.New(elem).Elem().Interface()
-			}
-			m.setValue(components[0], v)
-			v = m.Value(components[0])
-		}
-		if v == nil {
-			return
-		}
-	}
-	if s, ok := v.(MutableSource); ok {
-		s.SetValue(strings.Join(components[1:], "."), value)
-	}
-}
+	case observable.Source:
+		valueValue = value.Model()
 
-func (m *Model) setValue(key string, value any) {
-	valueValue := reflect.ValueOf(value)
+	default:
+		valueValue = reflect.ValueOf(value)
+	}
 
 	switch m.model.Kind() {
 	case reflect.Map:
@@ -329,7 +309,7 @@ func (m *Model) setValue(key string, value any) {
 		m.SetValueAt(index, value)
 
 	default:
-		keyValue := m.key(key, true)
+		keyValue := m.key(key)
 		if !(keyValue.IsValid() || keyValue.CanSet()) {
 			return
 		}
@@ -343,13 +323,29 @@ func (m *Model) setValue(key string, value any) {
 	}
 }
 
-func (m *Model) updateFrom(index int) {
-	for i := index; i < m.model.Len(); i++ {
+func (m *Model) updateFrom(index int, removeLast bool) {
+	length := m.model.Len()
+	if removeLast {
+		length++
+	}
+	for i := index; i < length; i++ {
 		key := strconv.Itoa(i)
 
 		m.keys.Delete(key)
+		if s, ok := m.sources.LoadAndDelete(key); ok {
+			s.(observable.Observable).Release()
+		}
+
 		m.Observe.SetValue(key, m.ValueAt(i))
 	}
+}
+
+func (m *Model) grow(n int) {
+	m.model.Grow(n)
+	for range n {
+		m.model.Set(reflect.Append(m.model, reflect.New(m.Elem()).Elem()))
+	}
+	m.Observe.SetValue("len", m.model.Len())
 }
 
 // InsertValueAt inserts a value in a slice at index, increasing the length.
@@ -358,23 +354,28 @@ func (m *Model) InsertValueAt(index int, value any) {
 		return
 	}
 
-	l := m.model.Len()
-	if index < 0 || index > l {
+	length := m.model.Len()
+	if index < 0 {
 		return
 	}
 
-	m.model.Set(reflect.Append(m.model, reflect.New(m.model.Type().Elem()).Elem()))
-	if index < l {
+	grow := 1
+	if index >= length {
+		grow += (index - length)
+	}
+	m.grow(grow)
+
+	if index < length {
 		reflect.Copy(
-			m.model.Slice(index+1, l+1),
-			m.model.Slice(index, l),
+			m.model.Slice(index+1, length+1),
+			m.model.Slice(index, length),
 		)
 	}
 	m.model.Index(index).Set(reflect.ValueOf(value))
 
 	m.Observe.InsertValueAt(index, value)
 	m.Observe.SetValue("len", m.model.Len())
-	m.updateFrom(index)
+	m.updateFrom(index, false)
 }
 
 // RemoveValueAt removes a value from a slice at index, reducing the length.
@@ -396,13 +397,10 @@ func (m *Model) RemoveValueAt(index int) {
 	}
 	m.model.SetLen(l - 1)
 
-	key := strconv.Itoa(index)
-	m.keys.Delete(key)
-
-	m.Observe.SetValue(key, nil)
+	m.Observe.SetValue(strconv.Itoa(index), nil)
 	m.Observe.RemoveValueAt(index)
 	m.Observe.SetValue("len", m.model.Len())
-	m.updateFrom(index)
+	m.updateFrom(index, true)
 }
 
 // SetValueAt sets a value in a slice or array at index.
@@ -411,14 +409,26 @@ func (m *Model) SetValueAt(index int, value any) {
 		return
 	}
 
-	if index < 0 || index >= m.model.Len() {
+	if index < 0 {
 		return
+	}
+	length := m.model.Len()
+	if index >= length {
+		if m.model.Kind() == reflect.Array {
+			return
+		}
+		m.grow(1 + (index - length))
 	}
 
 	key := strconv.Itoa(index)
 	m.keys.Delete(key)
 
-	m.model.Index(index).Set(reflect.ValueOf(value))
+	v := reflect.ValueOf(value)
+	if !v.IsValid() {
+		v = reflect.New(m.elem).Elem()
+	}
+
+	m.model.Index(index).Set(v)
 
 	m.Observe.SetValueAt(index, value)
 	m.Observe.SetValue(key, value)
@@ -459,4 +469,14 @@ func (m *Model) RemoveValueFor(key string) {
 
 	m.Observe.RemoveValueFor(key)
 	m.Observe.SetValue(key, nil)
+}
+
+func (m *Model) Release() {
+	m.Observe.Release()
+	m.sources.Range(func(_, v any) bool {
+		v.(observable.Observable).Release()
+		return true
+	})
+	m.sources.Clear()
+	m.keys.Clear()
 }
