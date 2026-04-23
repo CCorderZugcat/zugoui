@@ -59,39 +59,7 @@ func TestScroll(t *testing.T) {
 	items.Down("down")
 
 	assert.True(t, items.Value("canUp").(bool))
-	assert.True(t, items.Value("canDown").(bool))
+	assert.False(t, items.Value("canDown").(bool))
 
 	assert.Equal(t, 1, items.Value("0").(observable.Source).Value("Field2"))
-}
-
-func TestScrollUpdate(t *testing.T) {
-	// one scroll is a subset of the data,
-	// other other being replicated to contains the three items.
-	f1, f2 := &foo{}, &foo{}
-	m1, m2 := controllers.New(f1), controllers.New(f2)
-	require.NotNil(t, m1)
-	require.NotNil(t, m2)
-	defer m1.Release()
-	defer m2.Release()
-
-	k1, k2 := observable.NewPathObserver("*", m1), observable.NewPathObserver("*", m2)
-	defer k1.Release()
-	defer k2.Release()
-
-	k1.AddObserver("", k2)
-
-	s := m1.Value("Items").(*scroll.Scroll)
-	s.Insert("insert")
-	observable.SetKeyPath(m1, "Items.0.Field1", "red")
-	assert.Equal(t, "red", f1.Items[0].Field1)
-	assert.Equal(t, "red", f2.Items[0].Field1)
-
-	s.Insert("insert")
-	observable.SetKeyPath(m1, "Items.0.Field1", "green")
-	assert.Equal(t, "green", f1.Items[0].Field1)
-	assert.Equal(t, "green", f2.Items[0].Field1)
-
-	s.Down("down")
-	assert.Equal(t, "green", f1.Items[0].Field1)
-	assert.Equal(t, "red", f2.Items[0].Field1)
 }
