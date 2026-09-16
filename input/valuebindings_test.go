@@ -32,7 +32,7 @@ func TestValueBindings(t *testing.T) {
 		Product:  "toast",
 		Quantity: 5,
 		TextMe:   "inner text",
-		Cheese:   "shiny",
+		Cheese:   "cheddar",
 	}
 	m := controllers.New(s)
 	require.NotNil(t, m)
@@ -55,7 +55,17 @@ func TestValueBindings(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "this is some text", elem.Get("innerText").String())
 
-	t.Log(elem.Get("innerText").String())
+	elem, err = input.Element("checkme")
+	require.NoError(t, err)
+
+	jsglue.DispatchMouseEvent(elem, "click", map[string]any{
+		"bubbles":    true,
+		"cancelable": true,
+		"view":       js.Global().Get("window"),
+		"button":     0,
+	})
+
+	assert.Equal(t, "shiny", s.Cheese)
 }
 
 func TestArrayBindings(t *testing.T) {
