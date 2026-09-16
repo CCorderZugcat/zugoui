@@ -60,13 +60,9 @@ func (i *Input) Release() {
 	i.change.Release()
 }
 
-func (i *Input) changeHandler(_ js.Value, args []js.Value) any {
+func (i *Input) changeHandler(this js.Value, args []js.Value) any {
 	i.lck.RLock()
 	defer i.lck.RUnlock()
-
-	if len(args) > 0 {
-		args[0].Call("stopPropagation")
-	}
 
 	for key := range i.properties {
 		i.o.SetValue(key, i.Value(key))
@@ -74,11 +70,7 @@ func (i *Input) changeHandler(_ js.Value, args []js.Value) any {
 	return nil
 }
 
-func (i *Input) inputHandler(_ js.Value, args []js.Value) any {
-	if len(args) > 0 {
-		args[0].Call("stopPropagation")
-	}
-
+func (i *Input) inputHandler(this js.Value, args []js.Value) any {
 	select {
 	case i.inputCh <- struct{}{}:
 	default: // do not block
